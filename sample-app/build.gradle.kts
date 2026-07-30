@@ -34,6 +34,7 @@ android {
 dependencies {
     implementation(project(":grid-core"))
     implementation(project(":grid-material3"))
+    implementation(project(":grid-paging"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
@@ -43,6 +44,8 @@ dependencies {
     implementation(libs.compose.ui.graphics)
     implementation(libs.compose.ui.tooling.preview)
     implementation(libs.compose.material3)
+    implementation(libs.paging.runtime)
+    implementation(libs.paging.compose)
 
     debugImplementation(libs.compose.ui.tooling)
 }

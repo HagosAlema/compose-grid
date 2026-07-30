@@ -26,9 +26,31 @@ interface GridDataSource<T> {
      */
     fun peek(index: Int): T?
 
+    /**
+     * Why [peek] is currently returning `null` for not-yet-loaded rows, if
+     * relevant — lets [DataGrid]'s `placeholderCell` distinguish "loading"
+     * from "errored" from the default steady state. Most sources (like
+     * [ListGridDataSource]) never have anything to report here; the
+     * `PagingGridDataSource` adapter in the `grid-paging` artifact is the
+     * main implementer.
+     */
+    val loadState: GridLoadState get() = GridLoadState.Idle
+
     companion object {
         const val UNKNOWN_COUNT = -1
     }
+}
+
+/** Describes why a [DataGrid] row is showing a placeholder instead of its data. */
+sealed interface GridLoadState {
+    /** No active load; the row is simply not yet requested/available. */
+    data object Idle : GridLoadState
+
+    /** A load is actively in progress for this data source. */
+    data object Loading : GridLoadState
+
+    /** The most recent load attempt failed. */
+    data class Error(val throwable: Throwable) : GridLoadState
 }
 
 /**

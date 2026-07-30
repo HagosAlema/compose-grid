@@ -83,6 +83,7 @@ fun <T> DataGrid(
     rowHeight: Dp = 48.dp,
     onSortChange: (column: GridColumn<T>, direction: SortDirection) -> Unit = { _, _ -> },
     rowKey: (T) -> Any = { it.hashCode() },
+    placeholderCell: @Composable (loadState: GridLoadState) -> Unit = {},
 ) {
     val pinnedStartColumns = columns.filter { it.pinned == ColumnPin.Start }
     val scrollableColumns = columns.filter { it.pinned == ColumnPin.None }
@@ -136,6 +137,7 @@ fun <T> DataGrid(
                     rowHeight = rowHeight,
                     rowKey = rowKey,
                     region = ColumnRegion.PinnedStart,
+                    placeholderCell = placeholderCell,
                 )
                 RegionDivider(modifier = Modifier.fillMaxHeight())
             }
@@ -145,6 +147,7 @@ fun <T> DataGrid(
                 state = state,
                 rowHeight = rowHeight,
                 rowKey = rowKey,
+                placeholderCell = placeholderCell,
                 modifier = Modifier.weight(1f),
             )
             if (pinnedEndColumns.isNotEmpty()) {
@@ -156,6 +159,7 @@ fun <T> DataGrid(
                     rowHeight = rowHeight,
                     rowKey = rowKey,
                     region = ColumnRegion.PinnedEnd,
+                    placeholderCell = placeholderCell,
                 )
             }
         }
@@ -191,10 +195,11 @@ private fun <T> GridBody(
     state: GridState,
     rowHeight: Dp,
     rowKey: (T) -> Any,
+    placeholderCell: @Composable (loadState: GridLoadState) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val itemProvider = remember(columns, dataSource, rowKey, state) {
-        GridBodyItemProvider(columns, dataSource, rowKey, state)
+    val itemProvider = remember(columns, dataSource, rowKey, state, placeholderCell) {
+        GridBodyItemProvider(columns, dataSource, rowKey, state, placeholderCell)
     }
     val prefetchState = remember { LazyLayoutPrefetchState() }
     LazyLayout(
@@ -252,9 +257,10 @@ private fun <T> GridPinnedBody(
     rowHeight: Dp,
     rowKey: (T) -> Any,
     region: ColumnRegion,
+    placeholderCell: @Composable (loadState: GridLoadState) -> Unit,
 ) {
-    val itemProvider = remember(columns, dataSource, rowKey, state) {
-        GridBodyItemProvider(columns, dataSource, rowKey, state)
+    val itemProvider = remember(columns, dataSource, rowKey, state, placeholderCell) {
+        GridBodyItemProvider(columns, dataSource, rowKey, state, placeholderCell)
     }
     val prefetchState = remember { LazyLayoutPrefetchState() }
     LazyLayout(
@@ -401,6 +407,7 @@ private class GridBodyItemProvider<T>(
     private val dataSource: GridDataSource<T>,
     private val rowKey: (T) -> Any,
     private val state: GridState,
+    private val placeholderCell: @Composable (loadState: GridLoadState) -> Unit,
 ) : LazyLayoutItemProvider {
     private val columnCount get() = columns.size
 
@@ -432,7 +439,7 @@ private class GridBodyItemProvider<T>(
         }
 
         Box(modifier = cellModifier) {
-            if (item != null) column.cell(item)
+            if (item != null) column.cell(item) else placeholderCell(dataSource.loadState)
         }
     }
 }
