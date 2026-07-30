@@ -13,6 +13,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import io.github.composegrid.core.ColumnPin
 import io.github.composegrid.core.DataGrid
 import io.github.composegrid.core.GridColumn
 import io.github.composegrid.core.GridColumnWidth
@@ -69,8 +70,9 @@ fun EmployeeGridScreen() {
         GridColumn<Employee>(
             id = "name",
             header = { Text("Name") },
-            width = GridColumnWidth.Fixed(160.dp),
+            width = GridColumnWidth.Range(60.dp, max = 160.dp, initial = 60.dp),
             sortable = true,
+            pinned = ColumnPin.Start,
             cell = { Text(it.name) },
         ),
         GridColumn(
@@ -122,7 +124,8 @@ fun EmployeeGridScreen() {
         GridColumn(
             id = "phone",
             header = { Text("Phone") },
-            width = GridColumnWidth.Fixed(160.dp),
+            width = GridColumnWidth.Range(min=60.dp, max=160.dp, initial=160.dp),
+            pinned = ColumnPin.None,
             cell = { Text(it.phone) },
         ),
     )

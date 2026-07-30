@@ -2,6 +2,7 @@
 
 package io.github.composegrid.core
 
+import android.os.Build
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -14,14 +15,18 @@ import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.layout.LazyLayout
 import androidx.compose.foundation.lazy.layout.LazyLayoutItemProvider
 import androidx.compose.foundation.lazy.layout.LazyLayoutMeasurePolicy
 import androidx.compose.foundation.lazy.layout.LazyLayoutPrefetchState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -29,7 +34,10 @@ import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.Placeable
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -76,21 +84,81 @@ fun <T> DataGrid(
     onSortChange: (column: GridColumn<T>, direction: SortDirection) -> Unit = { _, _ -> },
     rowKey: (T) -> Any = { it.hashCode() },
 ) {
-    Column(modifier = modifier.fillMaxSize()) {
-        GridHeader(
-            columns = columns,
-            state = state,
-            rowHeight = rowHeight,
-            onSortChange = onSortChange,
-        )
-        GridBody(
-            columns = columns,
-            dataSource = dataSource,
-            state = state,
-            rowHeight = rowHeight,
-            rowKey = rowKey,
-            modifier = Modifier.weight(1f),
-        )
+    val pinnedStartColumns = columns.filter { it.pinned == ColumnPin.Start }
+    val scrollableColumns = columns.filter { it.pinned == ColumnPin.None }
+    val pinnedEndColumns = columns.filter { it.pinned == ColumnPin.End }
+    val hasResizableColumn = columns.any { it.width is GridColumnWidth.Range }
+
+    SystemGestureExclusionEffect(state)
+
+    // Small defense-in-depth for API <29 (or any gap the exclusion-rect effect
+    // above doesn't cover): keep the trailing edge's resize handle a few dp off
+    // the physical screen edge, rather than exactly flush with it. Only
+    // reserved when a resize handle could actually land there.
+    val trailingGutter = if (hasResizableColumn) Modifier.padding(end = ResizeGutterWidth) else Modifier
+
+    Column(modifier = modifier.fillMaxSize().then(trailingGutter)) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            if (pinnedStartColumns.isNotEmpty()) {
+                GridPinnedHeader(
+                    columns = pinnedStartColumns,
+                    state = state,
+                    rowHeight = rowHeight,
+                    onSortChange = onSortChange,
+                    region = ColumnRegion.PinnedStart,
+                )
+                RegionDivider(modifier = Modifier.height(rowHeight))
+            }
+            GridHeader(
+                columns = scrollableColumns,
+                state = state,
+                rowHeight = rowHeight,
+                onSortChange = onSortChange,
+                modifier = Modifier.weight(1f),
+            )
+            if (pinnedEndColumns.isNotEmpty()) {
+                RegionDivider(modifier = Modifier.height(rowHeight))
+                GridPinnedHeader(
+                    columns = pinnedEndColumns,
+                    state = state,
+                    rowHeight = rowHeight,
+                    onSortChange = onSortChange,
+                    region = ColumnRegion.PinnedEnd,
+                )
+            }
+        }
+        Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            if (pinnedStartColumns.isNotEmpty()) {
+                GridPinnedBody(
+                    columns = pinnedStartColumns,
+                    dataSource = dataSource,
+                    state = state,
+                    rowHeight = rowHeight,
+                    rowKey = rowKey,
+                    region = ColumnRegion.PinnedStart,
+                )
+                RegionDivider(modifier = Modifier.fillMaxHeight())
+            }
+            GridBody(
+                columns = scrollableColumns,
+                dataSource = dataSource,
+                state = state,
+                rowHeight = rowHeight,
+                rowKey = rowKey,
+                modifier = Modifier.weight(1f),
+            )
+            if (pinnedEndColumns.isNotEmpty()) {
+                RegionDivider(modifier = Modifier.fillMaxHeight())
+                GridPinnedBody(
+                    columns = pinnedEndColumns,
+                    dataSource = dataSource,
+                    state = state,
+                    rowHeight = rowHeight,
+                    rowKey = rowKey,
+                    region = ColumnRegion.PinnedEnd,
+                )
+            }
+        }
     }
 }
 
@@ -100,17 +168,18 @@ private fun <T> GridHeader(
     state: GridState,
     rowHeight: Dp,
     onSortChange: (GridColumn<T>, SortDirection) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val itemProvider = remember(columns, state, onSortChange) {
         GridHeaderItemProvider(columns, state, onSortChange)
     }
     LazyLayout(
         itemProvider = { itemProvider },
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .height(rowHeight)
             .clipToBounds()
-            .then(state.headerRemeasurementModifier),
+            .then(state.headerRemeasurementModifiers.getValue(ColumnRegion.Scrollable)),
         measurePolicy = headerMeasurePolicy(columns, state, rowHeight),
     )
 }
@@ -134,9 +203,68 @@ private fun <T> GridBody(
         modifier = modifier
             .fillMaxWidth()
             .clipToBounds()
-            .then(state.bodyRemeasurementModifier)
+            .then(state.bodyRemeasurementModifiers.getValue(ColumnRegion.Scrollable))
             .scrollable2D(state.scrollableState),
         measurePolicy = bodyMeasurePolicy(columns, dataSource, state, rowHeight),
+    )
+}
+
+/**
+ * A pinned (frozen) header region: always shows every column in [columns] —
+ * no horizontal windowing, since pinned regions never scroll — sized to its
+ * own natural content width via [pinnedHeaderMeasurePolicy] rather than
+ * filling incoming constraints, so the surrounding `Row` gives the
+ * [ColumnRegion.Scrollable] region everything else.
+ */
+@Composable
+private fun <T> GridPinnedHeader(
+    columns: List<GridColumn<T>>,
+    state: GridState,
+    rowHeight: Dp,
+    onSortChange: (GridColumn<T>, SortDirection) -> Unit,
+    region: ColumnRegion,
+) {
+    val itemProvider = remember(columns, state, onSortChange) {
+        GridHeaderItemProvider(columns, state, onSortChange)
+    }
+    LazyLayout(
+        itemProvider = { itemProvider },
+        modifier = Modifier
+            .height(rowHeight)
+            .clipToBounds()
+            .then(state.headerRemeasurementModifiers.getValue(region)),
+        measurePolicy = pinnedHeaderMeasurePolicy(columns, state, rowHeight),
+    )
+}
+
+/**
+ * A pinned (frozen) body region: always shows every column in [columns],
+ * vertically virtualized like [GridBody] but never horizontally windowed.
+ * Also gets [scrollable2D] wired to the same shared [GridState.scrollableState]
+ * as the scrollable region, so a drag gesture starting over a frozen column
+ * still scrolls the grid instead of doing nothing.
+ */
+@Composable
+private fun <T> GridPinnedBody(
+    columns: List<GridColumn<T>>,
+    dataSource: GridDataSource<T>,
+    state: GridState,
+    rowHeight: Dp,
+    rowKey: (T) -> Any,
+    region: ColumnRegion,
+) {
+    val itemProvider = remember(columns, dataSource, rowKey, state) {
+        GridBodyItemProvider(columns, dataSource, rowKey, state)
+    }
+    val prefetchState = remember { LazyLayoutPrefetchState() }
+    LazyLayout(
+        itemProvider = { itemProvider },
+        prefetchState = prefetchState,
+        modifier = Modifier
+            .clipToBounds()
+            .then(state.bodyRemeasurementModifiers.getValue(region))
+            .scrollable2D(state.scrollableState),
+        measurePolicy = pinnedBodyMeasurePolicy(columns, dataSource, state, rowHeight),
     )
 }
 
@@ -189,11 +317,25 @@ private fun BoxScope.ColumnResizeHandle(
             (current + deltaDp).coerceIn(rangeWidth.min, rangeWidth.max),
         )
     }
+    DisposableEffect(columnId) {
+        onDispose { state.resizeHandleExclusionRects.remove(columnId) }
+    }
     Box(
         modifier = Modifier
             .align(Alignment.CenterEnd)
             .fillMaxHeight()
             .width(ResizeHandleTouchWidth)
+            .onGloballyPositioned { coordinates ->
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    val bounds = coordinates.boundsInWindow()
+                    state.resizeHandleExclusionRects[columnId] = android.graphics.Rect(
+                        bounds.left.roundToInt(),
+                        bounds.top.roundToInt(),
+                        bounds.right.roundToInt(),
+                        bounds.bottom.roundToInt(),
+                    )
+                }
+            }
             .draggable(orientation = Orientation.Horizontal, state = dragState),
         contentAlignment = Alignment.Center,
     ) {
@@ -201,14 +343,58 @@ private fun BoxScope.ColumnResizeHandle(
             modifier = Modifier
                 .fillMaxHeight()
                 .width(ResizeHandleVisibleWidth)
-                .background(ResizeHandleColor),
+                .background(GridLineColor),
         )
+    }
+}
+
+/**
+ * Mirrors [GridState.resizeHandleExclusionRects] into
+ * `View.systemGestureExclusionRects` (API 29+ only — gesture-navigation
+ * back-swipe isn't a concept below that, so there's nothing to exclude),
+ * so a resize drag starting within the edge back-gesture zone isn't stolen
+ * by the OS mid-drag. Only ever removes/replaces rects *we* previously
+ * contributed, so it won't clobber whatever else the host app may have
+ * registered on the same View.
+ */
+@Composable
+private fun SystemGestureExclusionEffect(state: GridState) {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
+    val view = LocalView.current
+    val ourRects = state.resizeHandleExclusionRects.values.toList()
+    SideEffect {
+        val foreign = view.systemGestureExclusionRects.filterNot { it in state.previouslyContributedExclusionRects }
+        view.systemGestureExclusionRects = foreign + ourRects
+        state.previouslyContributedExclusionRects = ourRects
     }
 }
 
 private val ResizeHandleTouchWidth = 24.dp
 private val ResizeHandleVisibleWidth = 2.dp
-private val ResizeHandleColor = Color(0x33000000)
+private val ResizeGutterWidth = 8.dp
+private val GridLineColor = Color(0x33000000)
+
+/**
+ * A thin vertical line marking the boundary between a pinned region and the
+ * scrollable one. Takes its height via [modifier] rather than always calling
+ * `fillMaxHeight()` itself: the header `Row` has unbounded incoming height
+ * (it just wraps its content, unlike the `weight(1f)` body `Row`), and
+ * `fillMaxHeight()` against unbounded constraints there inflated the header
+ * row's measured height enough to starve the weighted body row down to zero
+ * — callers in a bounded-height context (the body row) pass
+ * `Modifier.fillMaxHeight()`; callers in an unbounded one (the header row)
+ * pass an explicit `Modifier.height(rowHeight)` instead.
+ */
+@Composable
+private fun RegionDivider(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .width(RegionDividerWidth)
+            .background(GridLineColor),
+    )
+}
+
+private val RegionDividerWidth = 1.dp
 
 private class GridBodyItemProvider<T>(
     private val columns: List<GridColumn<T>>,
@@ -348,6 +534,87 @@ private fun <T> bodyMeasurePolicy(
     }
 
     layout(constraints.maxWidth, constraints.maxHeight) {
+        placedCells.forEach { it.placeable.placeRelative(it.x, it.y) }
+    }
+}
+
+/**
+ * Like [headerMeasurePolicy] but for a pinned (frozen) region: every column in
+ * [columns] is always placed — a pinned region's column count is small and
+ * bounded and never scrolls, so there's no `visibleColumnRange` windowing —
+ * and `layout()` reports the region's own natural [GridColumnLayoutInfo.totalWidth]
+ * instead of filling incoming constraints, so the surrounding `Row` sizes this
+ * region to its content and gives the rest to the scrollable region.
+ */
+private fun <T> pinnedHeaderMeasurePolicy(
+    columns: List<GridColumn<T>>,
+    state: GridState,
+    rowHeight: Dp,
+): LazyLayoutMeasurePolicy = LazyLayoutMeasurePolicy { constraints ->
+    val rowHeightPx = rowHeight.roundToPx()
+
+    val columnLayout = GridColumnLayoutInfo.resolve(
+        columns = columns,
+        containerWidth = constraints.maxWidth.toDp(),
+        widthOverrides = state.columnWidthOverrides,
+    )
+
+    val placedCells = mutableListOf<PlacedCell>()
+    for (col in columns.indices) {
+        val x = columnLayout.offset(col).roundToPx()
+        val cellConstraints = Constraints.fixed(
+            width = columnLayout.width(col).roundToPx(),
+            height = rowHeightPx,
+        )
+        compose(col).forEach { measurable ->
+            placedCells += PlacedCell(x, 0, measurable.measure(cellConstraints))
+        }
+    }
+
+    layout(columnLayout.totalWidth.roundToPx(), rowHeightPx) {
+        placedCells.forEach { it.placeable.placeRelative(it.x, it.y) }
+    }
+}
+
+/** Like [bodyMeasurePolicy] but for a pinned (frozen) region — see [pinnedHeaderMeasurePolicy]. */
+private fun <T> pinnedBodyMeasurePolicy(
+    columns: List<GridColumn<T>>,
+    dataSource: GridDataSource<T>,
+    state: GridState,
+    rowHeight: Dp,
+): LazyLayoutMeasurePolicy = LazyLayoutMeasurePolicy { constraints ->
+    val columnCount = columns.size
+    val rowCount = dataSource.itemCount.coerceAtLeast(0)
+    val viewportHeightPx = constraints.maxHeight.toFloat()
+    val rowHeightPx = rowHeight.toPx()
+    val rowHeightPxInt = rowHeight.roundToPx()
+
+    val columnLayout = GridColumnLayoutInfo.resolve(
+        columns = columns,
+        containerWidth = constraints.maxWidth.toDp(),
+        widthOverrides = state.columnWidthOverrides,
+    )
+
+    val scrollY = state.scrollOffset.y
+    val rowRange = visibleRowRange(scrollY, viewportHeightPx, rowHeightPx, rowCount)
+
+    val placedCells = mutableListOf<PlacedCell>()
+    for (row in rowRange) {
+        val y = (row * rowHeightPx - scrollY).roundToInt()
+        for (col in columns.indices) {
+            val flatIndex = row * columnCount + col
+            val x = columnLayout.offset(col).roundToPx()
+            val cellConstraints = Constraints.fixed(
+                width = columnLayout.width(col).roundToPx(),
+                height = rowHeightPxInt,
+            )
+            compose(flatIndex).forEach { measurable ->
+                placedCells += PlacedCell(x, y, measurable.measure(cellConstraints))
+            }
+        }
+    }
+
+    layout(columnLayout.totalWidth.roundToPx(), constraints.maxHeight) {
         placedCells.forEach { it.placeable.placeRelative(it.x, it.y) }
     }
 }

@@ -13,6 +13,18 @@ import androidx.compose.ui.layout.RemeasurementModifier
 import androidx.compose.ui.unit.Dp
 
 /**
+ * The (up to) three horizontal regions a [DataGrid] can render: columns
+ * pinned to the start, the normally-scrolling middle, and columns pinned to
+ * the end. Each is its own `LazyLayout` pair (header + body) sharing this
+ * [GridState].
+ */
+internal enum class ColumnRegion {
+    PinnedStart,
+    Scrollable,
+    PinnedEnd,
+}
+
+/**
  * Holds all mutable state for a [DataGrid] instance: scroll position on both
  * axes, per-column widths (for resizable columns), sort state, and row
  * selection.
@@ -46,22 +58,36 @@ class GridState(
     // doesn't automatically remeasure just because a state value it read during
     // measurement changed; Compose's own LazyListState hits the same thing and
     // works around it by capturing a Remeasurement per layout and calling
-    // forceRemeasure() explicitly on every scroll delta. We do the same for both
-    // the body and the header (two independent LazyLayout nodes sharing this scroll
-    // position).
-    private var bodyRemeasurement: Remeasurement? = null
-    private var headerRemeasurement: Remeasurement? = null
+    // forceRemeasure() explicitly on every scroll delta. We do the same for every
+    // header/body region (up to three each, once pinned columns are in play), all
+    // of which share this scroll position.
+    private val headerRemeasurements = mutableMapOf<ColumnRegion, Remeasurement>()
+    private val bodyRemeasurements = mutableMapOf<ColumnRegion, Remeasurement>()
 
-    internal val bodyRemeasurementModifier = object : RemeasurementModifier {
-        override fun onRemeasurementAvailable(remeasurement: Remeasurement) {
-            bodyRemeasurement = remeasurement
+    // Built once (not per-recomposition): RemeasurementModifier has no detach
+    // callback, so recreating these on every recomposition would leak stale
+    // Remeasurement references into the maps above instead of replacing them.
+    internal val headerRemeasurementModifiers: Map<ColumnRegion, RemeasurementModifier> =
+        ColumnRegion.entries.associateWith { region ->
+            object : RemeasurementModifier {
+                override fun onRemeasurementAvailable(remeasurement: Remeasurement) {
+                    headerRemeasurements[region] = remeasurement
+                }
+            }
         }
-    }
 
-    internal val headerRemeasurementModifier = object : RemeasurementModifier {
-        override fun onRemeasurementAvailable(remeasurement: Remeasurement) {
-            headerRemeasurement = remeasurement
+    internal val bodyRemeasurementModifiers: Map<ColumnRegion, RemeasurementModifier> =
+        ColumnRegion.entries.associateWith { region ->
+            object : RemeasurementModifier {
+                override fun onRemeasurementAvailable(remeasurement: Remeasurement) {
+                    bodyRemeasurements[region] = remeasurement
+                }
+            }
         }
+
+    private fun forceRemeasureAll() {
+        headerRemeasurements.values.forEach { it.forceRemeasure() }
+        bodyRemeasurements.values.forEach { it.forceRemeasure() }
     }
 
     /**
@@ -75,8 +101,7 @@ class GridState(
         val target = (scrollOffset - delta).coerceIn(maxScrollOffset)
         val consumed = scrollOffset - target
         scrollOffset = target
-        bodyRemeasurement?.forceRemeasure()
-        headerRemeasurement?.forceRemeasure()
+        forceRemeasureAll()
         consumed
     }
 
@@ -96,9 +121,24 @@ class GridState(
      */
     internal fun setColumnWidthOverride(columnId: String, width: Dp) {
         columnWidthOverrides[columnId] = width
-        bodyRemeasurement?.forceRemeasure()
-        headerRemeasurement?.forceRemeasure()
+        forceRemeasureAll()
     }
+
+    /**
+     * Bounds (in window coordinates) of every currently-composed resize
+     * handle, keyed by column id. [DataGrid] mirrors this into
+     * `View.systemGestureExclusionRects` (API 29+) so a resize drag starting
+     * near the screen edge isn't stolen by Android's back gesture mid-drag —
+     * see `ColumnResizeHandle` and `SystemGestureExclusionEffect`.
+     */
+    internal val resizeHandleExclusionRects = mutableStateMapOf<String, android.graphics.Rect>()
+
+    /**
+     * What we last pushed into the View's exclusion-rect list, so we only
+     * ever remove/replace our own contributions and never clobber rects some
+     * other part of the host app may have registered on the same View.
+     */
+    internal var previouslyContributedExclusionRects: List<android.graphics.Rect> = emptyList()
 
     var sortColumnId: String? by mutableStateOf(initialSortColumnId)
         internal set
