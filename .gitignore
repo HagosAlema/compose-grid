@@ -1,0 +1,17 @@
+*.iml
+.gradle
+.kotlin
+local.properties
+/.idea/
+.DS_Store
+# Unanchored (no leading slash) so every module's own build/captures dir is
+# ignored, not just a top-level one — this is a multi-module project, and the
+# previous /build, /captures anchoring only matched a root-level folder that
+# never actually existed here, silently letting every module's build output
+# get staged.
+build/
+captures/
+.externalNativeBuild
+.cxx
+*.jks
+*.keystore
