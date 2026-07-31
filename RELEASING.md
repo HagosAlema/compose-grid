@@ -9,25 +9,26 @@ version of ComposeGrid has been published.**
 
 ## One-time setup
 
-### 1. Decide the `groupId` — do this first
+### 1. The `groupId` — settled
 
-The build currently declares `io.github.composegrid` (in the root
-`build.gradle.kts`), matching the Kotlin package names.
+The build declares **`io.github.hagosalema`** in the root `build.gradle.kts`;
+every module inherits it.
 
-**This will not verify as-is.** The Sonatype Central Portal grants an
-`io.github.<name>` namespace only to whoever controls that GitHub account, so
-`io.github.composegrid` requires a GitHub user or organisation literally named
-`composegrid`. Two options:
+This is the reverse-DNS of `hagosalema.github.io` and maps to the GitHub account
+the namespace is verified against. It does *not* conflict with the GitHub Pages
+site — Maven coordinates are identifiers in Central's index, never resolved over
+HTTP against the domain, and GitHub-based namespaces are verified by creating a
+temporary public repo rather than by DNS records or files on the site.
 
-- **Create a `composegrid` GitHub org** and move the repo there. Keeps the
-  groupId aligned with the package names, and reads better for a library that
-  may outlive one personal account.
-- **Switch to `io.github.hagosalema`** — verifies immediately against the
-  existing account, no org needed. Costs a mismatch between groupId and package
-  name, which is common and harmless.
+The Kotlin packages remain `io.github.composegrid`. groupId and package name
+don't have to agree, and renaming packages would break every consumer import for
+no benefit.
 
-Whichever you pick, change `group` in the root `build.gradle.kts`; every module
-inherits it. Package names do **not** need to change either way.
+> An earlier draft used `io.github.composegrid` as the groupId. That cannot be
+> verified without a GitHub user or org literally named `composegrid`, which
+> doesn't exist. If you ever create such an org, moving to it is a groupId
+> change — and after a release that means new coordinates, since published ones
+> can't be renamed.
 
 ### 2. Sonatype Central Portal account
 
@@ -80,7 +81,7 @@ the Gradle properties above.
 5. Verify the artifacts build and sign locally:
    ```bash
    ./gradlew publishToMavenLocal
-   ls ~/.m2/repository/io/github/composegrid/grid-core/<version>/
+   ls ~/.m2/repository/io/github/hagosalema/grid-core/<version>/
    ```
    Expect `.aar`, `-sources.jar`, `-javadoc.jar`, `.module`, `.pom`, and an
    `.asc` alongside each.

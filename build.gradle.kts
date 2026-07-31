@@ -13,7 +13,12 @@ plugins {
 // module inherits these rather than repeating them, so cutting a release is a
 // one-line change here — see RELEASING.md.
 allprojects {
-    group = "io.github.composegrid"
+    // io.github.hagosalema is the reverse-DNS of hagosalema.github.io and maps
+    // to the GitHub account the Sonatype namespace is verified against. The
+    // Kotlin packages stay io.github.composegrid — groupId and package name
+    // don't have to match, and renaming packages would break every import for
+    // no benefit.
+    group = "io.github.hagosalema"
     version = "0.1.0"
 }
 

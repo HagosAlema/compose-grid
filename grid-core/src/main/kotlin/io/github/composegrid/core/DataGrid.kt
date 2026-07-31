@@ -473,14 +473,23 @@ private class GridHeaderItemProvider<T>(
                     ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                // `fill = false` keeps the label sized to its content, so the
-                // sort indicator sits right after the text instead of being
+                val showLeadingIndicator = column.sortable &&
+                    style.sortIndicatorPosition == SortIndicatorPosition.Leading
+                val showTrailingIndicator = column.sortable &&
+                    style.sortIndicatorPosition == SortIndicatorPosition.Trailing
+
+                if (showLeadingIndicator) {
+                    style.sortIndicator(columnSortDirection)
+                    Spacer(modifier = Modifier.width(SortIndicatorGap))
+                }
+                // `fill = false` keeps the label sized to its content, so a
+                // trailing indicator sits right after the text instead of being
                 // pushed to the far edge of a wide column, where it reads as
                 // belonging to the column boundary rather than to this header.
                 // The weight still caps it, so a long label ellipsizes rather
                 // than shoving the indicator out of the cell.
                 Box(modifier = Modifier.weight(1f, fill = false)) { column.header() }
-                if (column.sortable) {
+                if (showTrailingIndicator) {
                     Spacer(modifier = Modifier.width(SortIndicatorGap))
                     style.sortIndicator(columnSortDirection)
                 }

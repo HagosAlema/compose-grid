@@ -47,12 +47,16 @@ remaining steps. Once released:
 
 ```kotlin
 dependencies {
-    implementation("io.github.composegrid:grid-core:0.1.0")
+    implementation("io.github.hagosalema:grid-core:0.1.0")
     // optional
-    implementation("io.github.composegrid:grid-material3:0.1.0")
-    implementation("io.github.composegrid:grid-paging:0.1.0")
+    implementation("io.github.hagosalema:grid-material3:0.1.0")
+    implementation("io.github.hagosalema:grid-paging:0.1.0")
 }
 ```
+
+The `groupId` is `io.github.hagosalema` while the Kotlin packages are
+`io.github.composegrid`. That's deliberate: the groupId has to match a namespace
+verifiable against a GitHub account, and the two don't need to agree.
 
 ## Quick start
 
@@ -168,6 +172,20 @@ icon-style resize handle ships as an opt-in:
 ```kotlin
 colors.toGridStyle(resizeHandle = { Material3ResizeHandle(it) })
 ```
+
+`sortIndicatorPosition` moves the sort arrow to either side of the header label.
+It defaults to `Trailing`, which is what most grids do for left-aligned text;
+`Leading` is the conventional choice for right-aligned numeric columns:
+
+```kotlin
+colors.toGridStyle(sortIndicatorPosition = SortIndicatorPosition.Leading)
+```
+
+One caveat with `Leading`: since an indicator normally draws nothing for
+`SortDirection.None`, the label shifts sideways when sort toggles — on the very
+element just clicked. Give your `sortIndicator` a fixed width in every direction
+(a faint hint, or a transparent spacer for `None`) if you want the label to hold
+still.
 
 **Keep the style in a stable reference.** Its slots compare by reference and
 `DataGrid` keys item providers on the instance, so a style rebuilt inline every

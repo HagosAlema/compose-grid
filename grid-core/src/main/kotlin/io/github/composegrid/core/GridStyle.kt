@@ -33,6 +33,8 @@ import androidx.compose.ui.unit.dp
  *   Called with [SortDirection.None] when the column is sortable but not the
  *   currently active sort column — implementations should render nothing in
  *   that case (see [DefaultSortIndicator]).
+ * @param sortIndicatorPosition Which side of the header label the sort
+ *   indicator sits on. See [SortIndicatorPosition] for the trade-off.
  * @param resizeHandle Rendered at the trailing edge of a resizable column's
  *   header ([GridColumnWidth.Range]). Controls *appearance only* — the grid
  *   keeps ownership of the touch target, the drag gesture, and the
@@ -54,6 +56,7 @@ data class GridStyle(
     val resizeHandle: @Composable (state: ResizeHandleState) -> Unit = { handleState ->
         DefaultResizeHandle(handleState, DefaultDividerColor, DefaultAccentColor)
     },
+    val sortIndicatorPosition: SortIndicatorPosition = SortIndicatorPosition.Trailing,
     val cellPadding: Dp = 8.dp,
 ) {
     companion object {
@@ -79,6 +82,34 @@ data class GridStyle(
 
 private val DefaultDividerColor = Color(0x33000000)
 private val DefaultAccentColor = Color(0xFF6750A4)
+
+/**
+ * Which side of a header label [GridStyle.sortIndicator] renders on.
+ *
+ * Both are start/end relative, so they mirror correctly under RTL.
+ */
+enum class SortIndicatorPosition {
+    /**
+     * Before the label. The conventional choice for **right-aligned numeric**
+     * columns, where it sits on the side the content is aligned to.
+     *
+     * Caveat: because an indicator normally draws nothing for
+     * [SortDirection.None], the header label shifts sideways each time sort
+     * toggles — on the very element the user just clicked. If that bothers you,
+     * have your `sortIndicator` occupy a fixed width in every direction
+     * (drawing a faint hint, or a transparent spacer, for `None`) so the label
+     * stays put.
+     */
+    Leading,
+
+    /**
+     * After the label, sized to the label rather than pinned to the cell edge.
+     * The default, and what most data grids do for left-aligned text columns.
+     * Toggling sort doesn't move the label, since only the trailing indicator
+     * appears and disappears.
+     */
+    Trailing,
+}
 
 /**
  * What a [GridStyle.resizeHandle] can react to.

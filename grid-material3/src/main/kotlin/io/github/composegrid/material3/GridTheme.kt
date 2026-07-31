@@ -22,6 +22,7 @@ import io.github.composegrid.core.DefaultResizeHandle
 import io.github.composegrid.core.GridStyle
 import io.github.composegrid.core.ResizeHandleState
 import io.github.composegrid.core.SortDirection
+import io.github.composegrid.core.SortIndicatorPosition
 
 /**
  * Default Material3-token-driven colors for `DataGrid`, for consumers who
@@ -51,6 +52,9 @@ data class GridColors(
  * @param sortIndicator Rendered in sortable column headers. Defaults to a
  *   Material3-colored/typed triangle glyph tinted with [focusIndicatorColor]
  *   — see [Material3SortIndicator].
+ * @param sortIndicatorPosition Which side of the header label the indicator
+ *   sits on. Pass [SortIndicatorPosition.Leading] for right-aligned numeric
+ *   columns; note the label-shift caveat documented on that enum.
  */
 fun GridColors.toGridStyle(
     sortIndicator: @Composable (direction: SortDirection) -> Unit = { direction ->
@@ -59,6 +63,7 @@ fun GridColors.toGridStyle(
     resizeHandle: @Composable (state: ResizeHandleState) -> Unit = { handleState ->
         DefaultResizeHandle(handleState, restColor = dividerColor, activeColor = focusIndicatorColor)
     },
+    sortIndicatorPosition: SortIndicatorPosition = SortIndicatorPosition.Trailing,
 ): GridStyle = GridStyle(
     headerBackground = headerBackground,
     rowBackground = rowBackground,
@@ -67,6 +72,7 @@ fun GridColors.toGridStyle(
     focusIndicatorColor = focusIndicatorColor,
     sortIndicator = sortIndicator,
     resizeHandle = resizeHandle,
+    sortIndicatorPosition = sortIndicatorPosition,
 )
 
 object GridDefaults {

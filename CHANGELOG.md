@@ -37,8 +37,10 @@ demonstrated in `sample-app`.
 - `sortedByGridState()` and `rememberSortedGridDataSource()` for in-memory
   sorting driven by `GridColumn.comparator`.
 - `GridStyle` — design-system-agnostic styling (plain `Color`s, no Material
-  dependency) with composable `sortIndicator` and `resizeHandle` slots and a
-  `cellPadding` inset.
+  dependency) with composable `sortIndicator` and `resizeHandle` slots, a
+  `cellPadding` inset, and `sortIndicatorPosition` for placing the sort arrow
+  before or after the header label (`Trailing` by default; `Leading` suits
+  right-aligned numeric columns).
 
 **Theming (`grid-material3`)**
 
