@@ -46,28 +46,57 @@ Maven Central requires signed artifacts.
 gpg --full-generate-key                 # RSA 4096, no expiry or a long one
 gpg --list-secret-keys --keyid-format=long
 gpg --keyserver keyserver.ubuntu.com --send-keys <LONG_KEY_ID>   # must be discoverable
-gpg --export-secret-keys --armor <LONG_KEY_ID> | base64           # for CI
+gpg --export-secret-keys --armor <LONG_KEY_ID>                   # value for CI
 ```
+
+That last command prints the ASCII-armored private key. Use it **verbatim**,
+including the `-----BEGIN PGP PRIVATE KEY BLOCK-----` / `-----END …-----` lines
+and the line breaks — do not base64-wrap it.
 
 Keep the private key and passphrase out of the repo. Nothing in this project
 reads them from a checked-in file.
 
 ### 4. Credentials
 
-Local, in `~/.gradle/gradle.properties` (never the repo):
+**CI** — four repository secrets, named exactly:
+
+| Secret | Value |
+|---|---|
+| `MAVEN_CENTRAL_USERNAME` | Portal **token** username (not your login) |
+| `MAVEN_CENTRAL_PASSWORD` | Portal token password |
+| `SIGNING_IN_MEMORY_KEY` | Full armored private key from step 3 |
+| `SIGNING_IN_MEMORY_KEY_PASSWORD` | The key's passphrase |
+
+Set them at
+**Settings → Secrets and variables → Actions → New repository secret**, or
+`gh secret set MAVEN_CENTRAL_USERNAME --repo HagosAlema/compose-grid` if you have
+the CLI. Secret values may contain newlines, so the armored key pastes in fine.
+`.github/workflows/release.yml` maps all four to the Gradle properties below.
+
+**Local** — for `publishToMavenLocal` and for publishing by hand. Put the two
+Sonatype values in `~/.gradle/gradle.properties` (never the repo):
 
 ```properties
 mavenCentralUsername=<portal token username>
 mavenCentralPassword=<portal token password>
-
-signingInMemoryKey=<base64 armored private key, single line>
-signingInMemoryKeyPassword=<key passphrase>
 ```
 
-For CI, add the same four as repository secrets named `MAVEN_CENTRAL_USERNAME`,
-`MAVEN_CENTRAL_PASSWORD`, `SIGNING_IN_MEMORY_KEY`, and
-`SIGNING_IN_MEMORY_KEY_PASSWORD`. `.github/workflows/release.yml` maps them to
-the Gradle properties above.
+Pass the key through the environment rather than a properties file, since a
+properties value can't span lines without escaping every one of them:
+
+```bash
+export ORG_GRADLE_PROJECT_signingInMemoryKey="$(gpg --export-secret-keys --armor <LONG_KEY_ID>)"
+export ORG_GRADLE_PROJECT_signingInMemoryKeyPassword='<key passphrase>'
+```
+
+Any Gradle property can be supplied this way — the `ORG_GRADLE_PROJECT_` prefix
+plus the property name. If your keyring holds more than one secret key, also set
+`ORG_GRADLE_PROJECT_signingInMemoryKeyId` to the short key id so the right one is
+picked.
+
+Signing is skipped entirely when no key is configured (see the note in each
+module's `mavenPublishing` block), so `publishToMavenLocal` works without any of
+this — handy for inspecting what a release would contain.
 
 ## Cutting a release
 
