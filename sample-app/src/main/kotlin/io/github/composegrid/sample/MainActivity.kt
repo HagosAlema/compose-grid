@@ -38,8 +38,9 @@ import io.github.composegrid.core.DataGrid
 import io.github.composegrid.core.GridColumn
 import io.github.composegrid.core.GridColumnWidth
 import io.github.composegrid.core.GridLoadState
-import io.github.composegrid.core.asGridDataSource
+import io.github.composegrid.core.SortDirection
 import io.github.composegrid.core.rememberGridState
+import io.github.composegrid.core.rememberSortedGridDataSource
 import io.github.composegrid.material3.GridDefaults
 import io.github.composegrid.paging.asGridDataSource
 import kotlinx.coroutines.delay
@@ -90,35 +91,43 @@ private fun generateManyEmployees(count: Int): List<Employee> {
     }
 }
 
-/** Simulates a paginated backend: a fixed in-memory list served one delayed page at a time. */
+/**
+ * Simulates a paginated backend: a fixed in-memory list served one delayed
+ * page at a time. [comparator] stands in for a server-side `ORDER BY` — the
+ * grid never reorders paged rows itself, so the "backend" applies the sort
+ * before slicing pages.
+ */
 private class FakeEmployeePagingSource(
-    private val allEmployees: List<Employee>,
+    allEmployees: List<Employee>,
     private val pageSize: Int,
+    comparator: Comparator<Employee>? = null,
 ) : PagingSource<Int, Employee>() {
+    private val rows = if (comparator == null) allEmployees else allEmployees.sortedWith(comparator)
+
     override suspend fun load(params: LoadParams<Int>): LoadResult<Int, Employee> {
         val page = params.key ?: 0
         delay(800) // simulate network latency so the loading placeholder is actually visible
         val fromIndex = page * pageSize
-        if (fromIndex >= allEmployees.size) {
+        if (fromIndex >= rows.size) {
             return LoadResult.Page(
                 data = emptyList(),
                 prevKey = if (page == 0) null else page - 1,
                 nextKey = null,
-                itemsBefore = allEmployees.size,
+                itemsBefore = rows.size,
                 itemsAfter = 0,
             )
         }
-        val toIndex = (fromIndex + pageSize).coerceAtMost(allEmployees.size)
+        val toIndex = (fromIndex + pageSize).coerceAtMost(rows.size)
         return LoadResult.Page(
-            data = allEmployees.subList(fromIndex, toIndex),
+            data = rows.subList(fromIndex, toIndex),
             prevKey = if (page == 0) null else page - 1,
-            nextKey = if (toIndex >= allEmployees.size) null else page + 1,
+            nextKey = if (toIndex >= rows.size) null else page + 1,
             // Without these, enablePlaceholders has nothing to extrapolate from and
             // itemCount stays capped at whatever's currently loaded, defeating the
             // whole point of the demo (a visible, scrollable band of placeholder
             // rows ahead of the loaded window).
             itemsBefore = fromIndex,
-            itemsAfter = allEmployees.size - toIndex,
+            itemsAfter = rows.size - toIndex,
         )
     }
 
@@ -131,6 +140,7 @@ private fun employeeColumns(): List<GridColumn<Employee>> = listOf(
         header = { Text("Name") },
         width = GridColumnWidth.Range(min = 80.dp, max = 200.dp, initial = 140.dp),
         sortable = true,
+        comparator = compareBy { it.name },
         pinned = ColumnPin.Start,
         cell = { Text(it.name) },
     ),
@@ -139,6 +149,7 @@ private fun employeeColumns(): List<GridColumn<Employee>> = listOf(
         header = { Text("Department") },
         width = GridColumnWidth.Fixed(140.dp),
         sortable = true,
+        comparator = compareBy { it.department },
         cell = { Text(it.department) },
     ),
     GridColumn(
@@ -152,6 +163,7 @@ private fun employeeColumns(): List<GridColumn<Employee>> = listOf(
         header = { Text("Salary") },
         width = GridColumnWidth.Fixed(120.dp),
         sortable = true,
+        comparator = compareBy { it.salary },
         cell = { Text("$${it.salary}") },
     ),
     GridColumn(
@@ -159,6 +171,7 @@ private fun employeeColumns(): List<GridColumn<Employee>> = listOf(
         header = { Text("Location") },
         width = GridColumnWidth.Fixed(120.dp),
         sortable = true,
+        comparator = compareBy { it.location },
         cell = { Text(it.location) },
     ),
     GridColumn(
@@ -166,6 +179,8 @@ private fun employeeColumns(): List<GridColumn<Employee>> = listOf(
         header = { Text("Start date") },
         width = GridColumnWidth.Fixed(140.dp),
         sortable = true,
+        // ISO-8601 dates sort correctly as plain strings.
+        comparator = compareBy { it.startDate },
         cell = { Text(it.startDate) },
     ),
     GridColumn(
@@ -243,14 +258,16 @@ fun SampleAppRoot(darkTheme: Boolean, onDarkThemeChange: (Boolean) -> Unit) {
     }
 }
 
+/** In-memory sorting: [rememberSortedGridDataSource] reorders rows from each column's comparator. */
 @Composable
 fun EmployeeGridScreen() {
     val employees = remember { sampleEmployees() }
-    val dataSource = employees.asGridDataSource()
+    val columns = remember { employeeColumns() }
     val gridState = rememberGridState()
+    val dataSource = rememberSortedGridDataSource(employees, columns, gridState)
 
     DataGrid(
-        columns = employeeColumns(),
+        columns = columns,
         dataSource = dataSource,
         state = gridState,
         modifier = Modifier.fillMaxSize(),
@@ -259,20 +276,37 @@ fun EmployeeGridScreen() {
     )
 }
 
-/** Demonstrates the `grid-paging` adapter: real Paging 3 load states drive the placeholder cells below. */
+/**
+ * Demonstrates the `grid-paging` adapter: real Paging 3 load states drive the
+ * placeholder cells below.
+ *
+ * Also shows the *server-side* sorting path. A paged source can't be reordered
+ * client-side — only the loaded window is in memory — so instead of
+ * [rememberSortedGridDataSource], the sort state rebuilds the `Pager` and the
+ * (fake) backend returns rows already ordered.
+ */
 @Composable
 fun PagedEmployeeGridScreen() {
-    val pager = remember {
+    val columns = remember { employeeColumns() }
+    val gridState = rememberGridState()
+    val allEmployees = remember { generateManyEmployees(200) }
+
+    val pager = remember(gridState.sortColumnId, gridState.sortDirection) {
+        val ascending = columns.firstOrNull { it.id == gridState.sortColumnId }?.comparator
+        val comparator = when (gridState.sortDirection) {
+            SortDirection.None -> null
+            SortDirection.Ascending -> ascending
+            SortDirection.Descending -> ascending?.reversed()
+        }
         Pager(PagingConfig(pageSize = 20, enablePlaceholders = true)) {
-            FakeEmployeePagingSource(generateManyEmployees(200), pageSize = 20)
+            FakeEmployeePagingSource(allEmployees, pageSize = 20, comparator = comparator)
         }
     }
     val lazyPagingItems = pager.flow.collectAsLazyPagingItems()
     val dataSource = lazyPagingItems.asGridDataSource()
-    val gridState = rememberGridState()
 
     DataGrid(
-        columns = employeeColumns(),
+        columns = columns,
         dataSource = dataSource,
         state = gridState,
         modifier = Modifier.fillMaxSize(),

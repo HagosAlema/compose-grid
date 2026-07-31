@@ -17,6 +17,17 @@ class GridColumn<T>(
     val width: GridColumnWidth,
     /** Whether clicking the header toggles sort state for this column. */
     val sortable: Boolean = false,
+    /**
+     * How to order rows by this column, for in-memory sorting via
+     * [sortedByGridState] / [rememberSortedGridDataSource].
+     *
+     * Leave `null` when the data source sorts itself — a paged or
+     * network-backed [GridDataSource] can only be ordered at the source, so
+     * there the grid just reports the click through `DataGrid`'s
+     * `onSortChange` and the backend does the ordering. A column can be
+     * [sortable] with no comparator for exactly that reason.
+     */
+    val comparator: Comparator<T>? = null,
     /** Whether this column is pinned to the start/end and exempt from horizontal scroll. */
     val pinned: ColumnPin = ColumnPin.None,
     /** Cell content for a given row item. */
