@@ -8,8 +8,11 @@ import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.hoverable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -20,6 +23,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -45,6 +49,8 @@ import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -53,9 +59,11 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.semantics.CollectionInfo
 import androidx.compose.ui.semantics.CollectionItemInfo
+import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.collectionInfo
 import androidx.compose.ui.semantics.collectionItemInfo
+import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
@@ -377,6 +385,26 @@ private class GridHeaderItemProvider<T>(
         val interactionSource = remember { MutableInteractionSource() }
         val isFocused by interactionSource.collectIsFocusedAsState()
         val columnSortDirection = if (state.sortColumnId == column.id) state.sortDirection else SortDirection.None
+        val rangeWidth = column.width as? GridColumnWidth.Range
+
+        // Dragging is the only way to resize with a pointer, which leaves
+        // TalkBack and switch-access users with no way at all — so expose the
+        // same operation as discrete actions on the header itself. They live
+        // here rather than on the handle because `clickable` above merges
+        // descendant semantics, which would fold a separate handle node into
+        // this one anyway.
+        val resizeActions = rangeWidth?.let {
+            listOf(
+                CustomAccessibilityAction("Increase column width") {
+                    state.resizeColumn(column.id, it, by = ResizeAccessibilityStep)
+                    true
+                },
+                CustomAccessibilityAction("Decrease column width") {
+                    state.resizeColumn(column.id, it, by = -ResizeAccessibilityStep)
+                    true
+                },
+            )
+        }
 
         Box(
             modifier = Modifier
@@ -408,24 +436,39 @@ private class GridHeaderItemProvider<T>(
                             SortDirection.Descending -> "Sorted descending"
                         }
                     }
+                    if (resizeActions != null) customActions = resizeActions
                 },
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = style.cellPadding),
+                    .padding(
+                        start = style.cellPadding,
+                        // Keep header content clear of the resize handle's
+                        // footprint, so a long label — or the sort indicator —
+                        // can never slide underneath it.
+                        end = if (rangeWidth != null) ResizeHandleTouchWidth else style.cellPadding,
+                    ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Box(modifier = Modifier.weight(1f)) { column.header() }
-                if (column.sortable) style.sortIndicator(columnSortDirection)
+                // `fill = false` keeps the label sized to its content, so the
+                // sort indicator sits right after the text instead of being
+                // pushed to the far edge of a wide column, where it reads as
+                // belonging to the column boundary rather than to this header.
+                // The weight still caps it, so a long label ellipsizes rather
+                // than shoving the indicator out of the cell.
+                Box(modifier = Modifier.weight(1f, fill = false)) { column.header() }
+                if (column.sortable) {
+                    Spacer(modifier = Modifier.width(SortIndicatorGap))
+                    style.sortIndicator(columnSortDirection)
+                }
             }
-            val rangeWidth = column.width as? GridColumnWidth.Range
             if (rangeWidth != null) {
                 ColumnResizeHandle(
                     columnId = column.id,
                     rangeWidth = rangeWidth,
                     state = state,
-                    handleColor = style.dividerColor,
+                    style = style,
                 )
             }
         }
@@ -433,26 +476,32 @@ private class GridHeaderItemProvider<T>(
 }
 
 /**
- * A thin draggable strip pinned to a resizable column's right edge in the
+ * The draggable strip pinned to a resizable column's trailing edge in the
  * header. Positioned via [BoxScope.align] within the header cell's own [Box],
  * so it always sits exactly at the column's *current* resolved width without
  * needing its own copy of [GridColumnLayoutInfo].
+ *
+ * Owns everything behavioural — touch target, drag gesture, hover tracking,
+ * pointer cursor, and the system-gesture-exclusion bookkeeping — and delegates
+ * only the visuals to [GridStyle.resizeHandle], so a custom handle can't
+ * accidentally shrink the touch target or break back-swipe protection.
  */
 @Composable
 private fun BoxScope.ColumnResizeHandle(
     columnId: String,
     rangeWidth: GridColumnWidth.Range,
     state: GridState,
-    handleColor: Color,
+    style: GridStyle,
 ) {
     val density = LocalDensity.current
+    val interactionSource = remember { MutableInteractionSource() }
+    val isDragging by interactionSource.collectIsDraggedAsState()
+    val isHovered by interactionSource.collectIsHoveredAsState()
+    val currentWidth = state.columnWidthOverrides[columnId] ?: rangeWidth.initial
+
     val dragState = rememberDraggableState { deltaPx ->
         val deltaDp = with(density) { deltaPx.toDp() }
-        val current = state.columnWidthOverrides[columnId] ?: rangeWidth.initial
-        state.setColumnWidthOverride(
-            columnId,
-            (current + deltaDp).coerceIn(rangeWidth.min, rangeWidth.max),
-        )
+        state.resizeColumn(columnId, rangeWidth, by = deltaDp)
     }
     DisposableEffect(columnId) {
         onDispose { state.resizeHandleExclusionRects.remove(columnId) }
@@ -473,17 +522,35 @@ private fun BoxScope.ColumnResizeHandle(
                     )
                 }
             }
-            .draggable(orientation = Orientation.Horizontal, state = dragState),
+            .hoverable(interactionSource)
+            .pointerHoverIcon(HorizontalResizeCursor)
+            .draggable(
+                orientation = Orientation.Horizontal,
+                state = dragState,
+                interactionSource = interactionSource,
+            ),
         contentAlignment = Alignment.Center,
     ) {
-        Box(
-            modifier = Modifier
-                .fillMaxHeight()
-                .width(ResizeHandleVisibleWidth)
-                .background(handleColor),
+        style.resizeHandle(
+            ResizeHandleState(
+                isDragging = isDragging,
+                isHovered = isHovered,
+                atMinWidth = currentWidth <= rangeWidth.min,
+                atMaxWidth = currentWidth >= rangeWidth.max,
+            ),
         )
     }
 }
+
+/**
+ * The platform's horizontal-resize cursor, for mouse/trackpad users on
+ * ChromeOS, tablets, and desktop-mode devices. [PointerIcon.Companion] only
+ * offers Default/Crosshair/Text/Hand, so this goes through the Android
+ * pointer-type bridge — no extra dependency, and `android.view.PointerIcon`
+ * has existed since API 24, which is our `minSdk`.
+ */
+private val HorizontalResizeCursor: PointerIcon =
+    PointerIcon(android.view.PointerIcon.TYPE_HORIZONTAL_DOUBLE_ARROW)
 
 /**
  * Mirrors [GridState.resizeHandleExclusionRects] into
@@ -507,9 +574,14 @@ private fun SystemGestureExclusionEffect(state: GridState) {
 }
 
 private val ResizeHandleTouchWidth = 24.dp
-private val ResizeHandleVisibleWidth = 2.dp
 private val ResizeGutterWidth = 8.dp
 private val FocusRingWidth = 2.dp
+
+/** How much one "Increase/Decrease column width" accessibility action moves the edge. */
+private val ResizeAccessibilityStep = 24.dp
+
+/** Breathing room between a header label and its sort indicator. */
+private val SortIndicatorGap = 4.dp
 
 /**
  * A thin vertical line marking the boundary between a pinned region and the

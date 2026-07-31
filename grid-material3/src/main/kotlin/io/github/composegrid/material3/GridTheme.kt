@@ -3,11 +3,24 @@ package io.github.composegrid.material3
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.unit.dp
+import io.github.composegrid.core.DefaultResizeHandle
 import io.github.composegrid.core.GridStyle
+import io.github.composegrid.core.ResizeHandleState
 import io.github.composegrid.core.SortDirection
 
 /**
@@ -43,6 +56,9 @@ fun GridColors.toGridStyle(
     sortIndicator: @Composable (direction: SortDirection) -> Unit = { direction ->
         Material3SortIndicator(direction, color = focusIndicatorColor)
     },
+    resizeHandle: @Composable (state: ResizeHandleState) -> Unit = { handleState ->
+        DefaultResizeHandle(handleState, restColor = dividerColor, activeColor = focusIndicatorColor)
+    },
 ): GridStyle = GridStyle(
     headerBackground = headerBackground,
     rowBackground = rowBackground,
@@ -50,6 +66,7 @@ fun GridColors.toGridStyle(
     dividerColor = dividerColor,
     focusIndicatorColor = focusIndicatorColor,
     sortIndicator = sortIndicator,
+    resizeHandle = resizeHandle,
 )
 
 object GridDefaults {
@@ -63,9 +80,20 @@ object GridDefaults {
         focusIndicatorColor = MaterialTheme.colorScheme.primary,
     )
 
-    /** Ready-made [GridStyle] built from [colors] — the easiest way to Material3-theme a `DataGrid`. */
+    /**
+     * Ready-made [GridStyle] built from [colors] — the easiest way to
+     * Material3-theme a `DataGrid`.
+     *
+     * Remembered against the theme colors, because [GridStyle]'s composable
+     * slots compare by reference and `DataGrid` keys its item providers on the
+     * style instance: returning a fresh one per recomposition would rebuild
+     * every header and body provider each time.
+     */
     @Composable
-    fun style(): GridStyle = colors().toGridStyle()
+    fun style(): GridStyle {
+        val colors = colors()
+        return remember(colors) { colors.toGridStyle() }
+    }
 }
 
 /**
@@ -84,3 +112,93 @@ fun Material3SortIndicator(direction: SortDirection, color: Color = MaterialThem
         BasicText(glyph, style = LocalTextStyle.current)
     }
 }
+
+/**
+ * Opt-in resize handle that shows left/right chevrons instead of the plain
+ * thickening line of [DefaultResizeHandle]:
+ *
+ * ```
+ * val style = GridDefaults.colors().toGridStyle(resizeHandle = { Material3ResizeHandle(it) })
+ * ```
+ *
+ * The chevrons appear only while hovered or dragged, and a chevron is dropped
+ * when the column has hit that end of its `Range` — pointing somewhere a drag
+ * can't go reads as a broken control. At rest this is the same quiet boundary
+ * line, deliberately: one permanent icon per resizable column competes with
+ * the data for attention, and a wide grid has a lot of columns.
+ *
+ * Drawn with [Canvas] rather than a vector asset so `grid-material3` doesn't
+ * pull in `material-icons-extended` for two glyphs.
+ *
+ * Caveat worth knowing before you enable this: on a column that is both
+ * sortable and resizable, the chevrons share the header's trailing edge with
+ * [Material3SortIndicator] and will overlap it while active. The plain line
+ * is narrow enough not to notice; chevrons are not.
+ */
+@Composable
+fun Material3ResizeHandle(
+    state: ResizeHandleState,
+    restColor: Color = MaterialTheme.colorScheme.outlineVariant,
+    activeColor: Color = MaterialTheme.colorScheme.primary,
+) {
+    if (!state.isActive) {
+        Box(modifier = Modifier.fillMaxHeight().width(RestLineWidth).background(restColor))
+        return
+    }
+    Box(
+        modifier = Modifier.fillMaxHeight().width(ChevronPairWidth),
+        contentAlignment = Alignment.Center,
+    ) {
+        Box(modifier = Modifier.fillMaxHeight().width(ActiveLineWidth).background(activeColor))
+        Canvas(modifier = Modifier.size(ChevronPairWidth, ChevronHeight)) {
+            val inset = ChevronInset.toPx()
+            val stroke = ChevronStroke.toPx()
+            val midY = size.height / 2f
+            val reach = ChevronReach.toPx()
+
+            // Left-pointing chevron, suppressed once the column can't shrink.
+            if (!state.atMinWidth) {
+                drawLine(
+                    color = activeColor,
+                    start = androidx.compose.ui.geometry.Offset(inset, midY),
+                    end = androidx.compose.ui.geometry.Offset(inset + reach, midY - reach),
+                    strokeWidth = stroke,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = activeColor,
+                    start = androidx.compose.ui.geometry.Offset(inset, midY),
+                    end = androidx.compose.ui.geometry.Offset(inset + reach, midY + reach),
+                    strokeWidth = stroke,
+                    cap = StrokeCap.Round,
+                )
+            }
+            // Right-pointing chevron, suppressed once the column can't grow.
+            if (!state.atMaxWidth) {
+                val right = size.width - inset
+                drawLine(
+                    color = activeColor,
+                    start = androidx.compose.ui.geometry.Offset(right, midY),
+                    end = androidx.compose.ui.geometry.Offset(right - reach, midY - reach),
+                    strokeWidth = stroke,
+                    cap = StrokeCap.Round,
+                )
+                drawLine(
+                    color = activeColor,
+                    start = androidx.compose.ui.geometry.Offset(right, midY),
+                    end = androidx.compose.ui.geometry.Offset(right - reach, midY + reach),
+                    strokeWidth = stroke,
+                    cap = StrokeCap.Round,
+                )
+            }
+        }
+    }
+}
+
+private val RestLineWidth = 2.dp
+private val ActiveLineWidth = 2.dp
+private val ChevronPairWidth = 20.dp
+private val ChevronHeight = 12.dp
+private val ChevronInset = 1.dp
+private val ChevronReach = 4.dp
+private val ChevronStroke = 1.5.dp
