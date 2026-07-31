@@ -34,7 +34,13 @@ jobs:
         run: ./gradlew assemble
 
   instrumented-tests:
-    runs-on: macos-latest # macOS runners have hardware acceleration for the emulator
+    # Ubuntu, not macOS. The macOS runners are Apple Silicon now, and the
+    # emulator action defaults to x86_64 system images that don't exist for an
+    # ARM host — the AVD failed to start in ~30s, well before any test ran.
+    # GitHub's Ubuntu runners support nested virtualisation, so enabling KVM
+    # below gives hardware acceleration here, at a fraction of the macOS
+    # per-minute cost.
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -50,10 +56,21 @@ jobs:
       - name: Grant execute permission for gradlew
         run: chmod +x gradlew
 
+      # Without this the emulator falls back to software rendering and either
+      # times out or crawls. Taken from the emulator action's own README.
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+
       - name: Run instrumented tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 30
+          arch: x86_64
+          disable-animations: true
           # Only the library modules have instrumented tests. `connectedCheck`
           # at the root would also try to run the benchmark module, which needs
           # a physical device to produce meaningful numbers.
