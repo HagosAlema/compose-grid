@@ -73,6 +73,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.verticalScrollAxisRange
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlin.math.ceil
@@ -92,17 +93,14 @@ import kotlin.math.roundToInt
  *
  * Accessibility: header and body cells carry [Role.Button]/`selected`/
  * `stateDescription`/[CollectionInfo]/[CollectionItemInfo] semantics for
- * TalkBack, and every cell is a focus target with a [style]-colored focus
- * ring plus arrow-key navigation (via [FocusManager.moveFocus], so it moves
- * between *currently-composed* cells — an off-screen row/column only becomes
- * reachable once scrolled into view; keyboard-driven scroll-into-view isn't
- * implemented yet).
+ * TalkBack, the scrollable body is a real scroll container (so services can
+ * page through it), and every cell is a focus target with a [style]-colored
+ * focus ring plus arrow-key navigation that scrolls off-screen cells into view
+ * — see [gridArrowKeyNavigation].
  *
- * Known current limitations, tracked for M7+:
+ * Known current limitations:
  *  - Rows share a single uniform [rowHeight]; variable per-row height isn't
  *    part of the v1 feature set.
- *  - Arrow-key navigation doesn't scroll off-screen cells into view (see
- *    above).
  *
  * @param columns Column definitions, in display order.
  * @param dataSource Row data. Use [asGridDataSource] to wrap a plain `List<T>`.
@@ -143,13 +141,12 @@ fun <T> DataGrid(
     // the physical screen edge, rather than exactly flush with it. Only
     // reserved when a resize handle could actually land there.
     val trailingGutter = if (hasResizableColumn) Modifier.padding(end = ResizeGutterWidth) else Modifier
-    val focusManager = LocalFocusManager.current
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .then(trailingGutter)
-            .gridArrowKeyNavigation(focusManager),
+            .gridArrowKeyNavigation(state, rowHeight),
     ) {
         Row(modifier = Modifier.fillMaxWidth()) {
             if (pinnedStartColumns.isNotEmpty()) {
@@ -240,17 +237,64 @@ fun <T> DataGrid(
  * at the grid root rather than per-cell: a cell never consumes arrow-key
  * events itself, so they bubble up to this handler regardless of which
  * region (pinned-start/scrollable/pinned-end) currently holds focus.
+ *
+ * Focus search can only reach cells that exist, and virtualization means the
+ * cell past the viewport edge hasn't been composed — so when [moveFocus] finds
+ * nothing, this scrolls one row or column that way and tries again. The retry
+ * works within the same event because [GridState.scrollBy] forces a
+ * synchronous remeasure, and the measure pass subcomposes the newly visible
+ * cells before control returns here.
  */
-private fun Modifier.gridArrowKeyNavigation(focusManager: FocusManager): Modifier = onKeyEvent { keyEvent ->
-    if (keyEvent.type != KeyEventType.KeyDown) return@onKeyEvent false
-    val direction = when (keyEvent.key) {
-        Key.DirectionUp -> FocusDirection.Up
-        Key.DirectionDown -> FocusDirection.Down
-        Key.DirectionLeft -> FocusDirection.Left
-        Key.DirectionRight -> FocusDirection.Right
-        else -> return@onKeyEvent false
+@Composable
+private fun Modifier.gridArrowKeyNavigation(state: GridState, rowHeight: Dp): Modifier {
+    val focusManager = LocalFocusManager.current
+    val density = LocalDensity.current
+    val rowHeightPx = with(density) { rowHeight.toPx() }
+
+    return onKeyEvent { keyEvent ->
+        if (keyEvent.type != KeyEventType.KeyDown) return@onKeyEvent false
+        val direction = when (keyEvent.key) {
+            Key.DirectionUp -> FocusDirection.Up
+            Key.DirectionDown -> FocusDirection.Down
+            Key.DirectionLeft -> FocusDirection.Left
+            Key.DirectionRight -> FocusDirection.Right
+            else -> return@onKeyEvent false
+        }
+        if (focusManager.moveFocus(direction)) return@onKeyEvent true
+
+        val step = when (direction) {
+            FocusDirection.Up -> Offset(0f, -rowHeightPx)
+            FocusDirection.Down -> Offset(0f, rowHeightPx)
+            FocusDirection.Left -> Offset(state.columnRevealStepPx(forward = false, density), 0f)
+            FocusDirection.Right -> Offset(state.columnRevealStepPx(forward = true, density), 0f)
+            else -> Offset.Zero
+        }
+        if (step == Offset.Zero) return@onKeyEvent false
+        // Nothing moved, so we're against the end of the content: let the key
+        // event bubble instead of swallowing it.
+        if (state.scrollBy(step) == Offset.Zero) return@onKeyEvent false
+
+        focusManager.moveFocus(direction)
+        true
     }
-    focusManager.moveFocus(direction)
+}
+
+/**
+ * Horizontal scroll distance, in pixels, that reveals one more column — see
+ * [GridColumnLayoutInfo.revealStep], which owns the arithmetic so it can be
+ * unit-tested without a device.
+ *
+ * Returns `0f` before the first measure pass has recorded any column geometry.
+ */
+private fun GridState.columnRevealStepPx(forward: Boolean, density: Density): Float {
+    val layout = scrollableColumnLayout ?: return 0f
+    return with(density) {
+        layout.revealStep(
+            scrollOffsetX = scrollOffset.x.toDp(),
+            viewportWidth = scrollableViewportWidth,
+            forward = forward,
+        ).toPx()
+    }
 }
 
 @Composable
@@ -432,9 +476,12 @@ private class GridHeaderItemProvider<T>(
             modifier = Modifier
                 .fillMaxSize()
                 .background(style.headerBackground)
-                .then(
-                    if (isFocused) Modifier.border(FocusRingWidth, style.focusIndicatorColor) else Modifier,
-                )
+                // Always in the chain, widened only when focused. Conditionally
+                // *inserting* a modifier ahead of the `clickable` that owns the
+                // focus node changes the chain's structure the instant focus
+                // arrives, which re-creates that node and drops the focus again
+                // — so the ring flickered and arrow-key navigation never worked.
+                .focusRing(isFocused, style.focusIndicatorColor)
                 .clickable(
                     enabled = column.sortable,
                     interactionSource = interactionSource,
@@ -615,6 +662,20 @@ private val ResizeAccessibilityStep = 24.dp
 private val SortIndicatorGap = 4.dp
 
 /**
+ * A focus ring that is always present in the modifier chain and merely
+ * invisible when [focused] is false — a zero-width border draws nothing.
+ *
+ * This has to stay unconditional. Wrapping it in `if (focused) ... else
+ * Modifier` changes the chain's shape the moment focus lands, Compose
+ * re-creates the neighbouring focus node, and the cell loses the focus it just
+ * gained: the ring flickers off and arrow-key navigation can never advance.
+ */
+private fun Modifier.focusRing(focused: Boolean, color: Color): Modifier = border(
+    width = if (focused) FocusRingWidth else 0.dp,
+    color = if (focused) color else Color.Transparent,
+)
+
+/**
  * A thin vertical line marking the boundary between a pinned region and the
  * scrollable one. Takes its height via [modifier] rather than always calling
  * `fillMaxHeight()` itself: the header `Row` has unbounded incoming height
@@ -685,9 +746,7 @@ private class GridBodyItemProvider<T>(
             modifier = Modifier
                 .fillMaxSize()
                 .background(if (itemSelected) style.selectedRowBackground else style.rowBackground)
-                .then(
-                    if (isFocused) Modifier.border(FocusRingWidth, style.focusIndicatorColor) else Modifier,
-                )
+                .focusRing(isFocused, style.focusIndicatorColor)
                 .clickable(
                     interactionSource = interactionSource,
                     indication = LocalIndication.current,
@@ -772,6 +831,11 @@ private fun <T> bodyMeasurePolicy(
         containerWidth = viewportWidth,
         widthOverrides = state.columnWidthOverrides,
     )
+
+    // Keyboard navigation needs these to reveal the next column, and column
+    // geometry only exists inside this measure pass. See GridState.
+    state.scrollableColumnLayout = columnLayout
+    state.scrollableViewportWidth = viewportWidth
 
     val totalHeightPx = rowCount * rowHeightPx
     state.updateScrollBounds(

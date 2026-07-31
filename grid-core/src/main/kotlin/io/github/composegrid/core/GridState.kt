@@ -11,6 +11,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.Remeasurement
 import androidx.compose.ui.layout.RemeasurementModifier
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 /**
  * The (up to) three horizontal regions a [DataGrid] can render: columns
@@ -60,6 +61,19 @@ class GridState(
         maxScrollOffset = maxOffset
         scrollOffset = scrollOffset.coerceIn(maxOffset)
     }
+
+    /**
+     * Column geometry and viewport width most recently resolved for the
+     * [ColumnRegion.Scrollable] region, captured during measurement.
+     *
+     * Keyboard navigation needs real column widths to work out how far to
+     * scroll to reveal the next column, and that geometry only exists inside
+     * the measure pass. Deliberately *not* snapshot state: these are written
+     * during measurement, and making them observable would invalidate the
+     * layout that just wrote them.
+     */
+    internal var scrollableColumnLayout: GridColumnLayoutInfo? = null
+    internal var scrollableViewportWidth: Dp = 0.dp
 
     /**
      * Scrolls by [delta] pixels and returns what was actually consumed after

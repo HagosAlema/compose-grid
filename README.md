@@ -207,10 +207,15 @@ Supported out of the box:
 - Resizable columns expose "Increase/Decrease column width" custom actions,
   because dragging alone is not operable by TalkBack or switch access.
 - Every cell is a focus target with a themed focus ring, and arrow keys move
-  focus between cells.
+  focus between cells — including across a scroll boundary. Focus search only
+  sees composed cells, so when the next cell is scrolled out of view the grid
+  scrolls one row or column that way and retries, which means a keyboard user
+  can walk the whole dataset rather than stopping at the viewport edge.
 
-Known gap: arrow-key navigation only reaches *currently composed* cells, so
-keyboard users can't yet cross a scroll boundary without scrolling first.
+Testing note: `requestFocus()` from `compose-ui-test` doesn't grant focus in
+this project's setup, so the keyboard path is covered by unit tests over the
+scroll arithmetic ([`GridColumnRevealStepTest`](grid-core/src/test/kotlin/io/github/composegrid/core/GridColumnRevealStepTest.kt))
+plus manual verification with real key events on a device.
 
 ## Building locally
 

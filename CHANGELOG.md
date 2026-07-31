@@ -67,7 +67,9 @@ demonstrated in `sample-app`.
   being touch-scrollable.
 - "Increase column width" / "Decrease column width" custom actions, making
   resizing operable without a drag gesture.
-- Focusable cells with a themed focus ring and arrow-key focus movement.
+- Focusable cells with a themed focus ring and arrow-key focus movement that
+  scrolls off-screen cells into view, so a keyboard user can traverse the whole
+  dataset rather than stopping at the viewport edge.
 
 **Tooling**
 
@@ -80,10 +82,12 @@ demonstrated in `sample-app`.
 
 - Rows share a single uniform `rowHeight`; variable per-row height is out of v1
   scope.
-- Arrow-key navigation only reaches currently-composed cells — it does not
-  scroll an off-screen row or column into view.
 - `Material3ResizeHandle`'s chevrons overlap the sort indicator while active on
-  a column that is both sortable and resizable.
+  a column that is both sortable and resizable. Setting
+  `sortIndicatorPosition = Leading` avoids it.
+- `requestFocus()` from `compose-ui-test` doesn't grant focus in this setup, so
+  focus-dependent behaviour has no automated instrumented cover — see
+  `DEVELOPMENT_PLAN.md` §7.
 
 [Unreleased]: https://github.com/HagosAlema/compose-grid/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/HagosAlema/compose-grid/releases/tag/v0.1.0
