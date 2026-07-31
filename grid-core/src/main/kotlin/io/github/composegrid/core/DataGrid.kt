@@ -4,8 +4,12 @@ package io.github.composegrid.core
 
 import android.os.Build
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.LocalIndication
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
@@ -27,17 +31,35 @@ import androidx.compose.foundation.lazy.layout.LazyLayoutPrefetchState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.CollectionInfo
+import androidx.compose.ui.semantics.CollectionItemInfo
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.collectionInfo
+import androidx.compose.ui.semantics.collectionItemInfo
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -48,7 +70,7 @@ import kotlin.math.roundToInt
 /**
  * A virtualized, resizable, sortable data grid for Jetpack Compose.
  *
- * ## Status: M2 milestone
+ * ## Status: M6 milestone
  * Rows and columns virtualize jointly on a custom
  * [androidx.compose.foundation.lazy.layout.LazyLayout] engine: only cells
  * whose row *and* column both intersect the viewport are composed, measured,
@@ -56,18 +78,27 @@ import kotlin.math.roundToInt
  * [GridColumnLayoutInfo] and horizontal scroll position as a second, single-row
  * `LazyLayout`, so header and body columns always stay pixel-aligned.
  *
- * Known current limitations, tracked for M3+:
- *  - [ColumnPin] is accepted in the API but not yet wired up — no frozen
- *    columns yet.
+ * Accessibility: header and body cells carry [Role.Button]/`selected`/
+ * `stateDescription`/[CollectionInfo]/[CollectionItemInfo] semantics for
+ * TalkBack, and every cell is a focus target with a [style]-colored focus
+ * ring plus arrow-key navigation (via [FocusManager.moveFocus], so it moves
+ * between *currently-composed* cells — an off-screen row/column only becomes
+ * reachable once scrolled into view; keyboard-driven scroll-into-view isn't
+ * implemented yet).
+ *
+ * Known current limitations, tracked for M7+:
  *  - Rows share a single uniform [rowHeight]; variable per-row height isn't
  *    part of the v1 feature set.
- *  - Column resizing ([GridColumnWidth.Range]) is resolved by
- *    [GridColumnLayoutInfo] but there's no drag handle yet to change it.
+ *  - Arrow-key navigation doesn't scroll off-screen cells into view (see
+ *    above).
  *
  * @param columns Column definitions, in display order.
  * @param dataSource Row data. Use [asGridDataSource] to wrap a plain `List<T>`.
  * @param state Grid state (scroll, selection, sort, column resize). See [rememberGridState].
  * @param modifier Modifier applied to the outer grid container.
+ * @param style Visual styling (colors, sort indicator). Defaults to
+ *   [GridStyle.Default]; `grid-material3`'s `GridDefaults.style()` builds one
+ *   from Material3 theme tokens instead.
  * @param rowHeight Uniform height applied to every row and to the header.
  * @param onSortChange Invoked when the user changes sort via a header click.
  * @param rowKey Stable key for a row item, used for selection tracking and
@@ -80,6 +111,7 @@ fun <T> DataGrid(
     dataSource: GridDataSource<T>,
     state: GridState = rememberGridState(),
     modifier: Modifier = Modifier,
+    style: GridStyle = GridStyle.Default,
     rowHeight: Dp = 48.dp,
     onSortChange: (column: GridColumn<T>, direction: SortDirection) -> Unit = { _, _ -> },
     rowKey: (T) -> Any = { it.hashCode() },
@@ -89,6 +121,8 @@ fun <T> DataGrid(
     val scrollableColumns = columns.filter { it.pinned == ColumnPin.None }
     val pinnedEndColumns = columns.filter { it.pinned == ColumnPin.End }
     val hasResizableColumn = columns.any { it.width is GridColumnWidth.Range }
+    val globalColumnIndex = columns.withIndex().associate { (i, c) -> c.id to i }
+    val totalColumnCount = columns.size
 
     SystemGestureExclusionEffect(state)
 
@@ -97,32 +131,44 @@ fun <T> DataGrid(
     // the physical screen edge, rather than exactly flush with it. Only
     // reserved when a resize handle could actually land there.
     val trailingGutter = if (hasResizableColumn) Modifier.padding(end = ResizeGutterWidth) else Modifier
+    val focusManager = LocalFocusManager.current
 
-    Column(modifier = modifier.fillMaxSize().then(trailingGutter)) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .then(trailingGutter)
+            .gridArrowKeyNavigation(focusManager),
+    ) {
         Row(modifier = Modifier.fillMaxWidth()) {
             if (pinnedStartColumns.isNotEmpty()) {
                 GridPinnedHeader(
                     columns = pinnedStartColumns,
                     state = state,
                     rowHeight = rowHeight,
+                    style = style,
+                    globalColumnIndex = globalColumnIndex,
                     onSortChange = onSortChange,
                     region = ColumnRegion.PinnedStart,
                 )
-                RegionDivider(modifier = Modifier.height(rowHeight))
+                RegionDivider(color = style.dividerColor, modifier = Modifier.height(rowHeight))
             }
             GridHeader(
                 columns = scrollableColumns,
                 state = state,
                 rowHeight = rowHeight,
+                style = style,
+                globalColumnIndex = globalColumnIndex,
                 onSortChange = onSortChange,
                 modifier = Modifier.weight(1f),
             )
             if (pinnedEndColumns.isNotEmpty()) {
-                RegionDivider(modifier = Modifier.height(rowHeight))
+                RegionDivider(color = style.dividerColor, modifier = Modifier.height(rowHeight))
                 GridPinnedHeader(
                     columns = pinnedEndColumns,
                     state = state,
                     rowHeight = rowHeight,
+                    style = style,
+                    globalColumnIndex = globalColumnIndex,
                     onSortChange = onSortChange,
                     region = ColumnRegion.PinnedEnd,
                 )
@@ -135,28 +181,37 @@ fun <T> DataGrid(
                     dataSource = dataSource,
                     state = state,
                     rowHeight = rowHeight,
+                    style = style,
+                    globalColumnIndex = globalColumnIndex,
+                    totalColumnCount = totalColumnCount,
                     rowKey = rowKey,
                     region = ColumnRegion.PinnedStart,
                     placeholderCell = placeholderCell,
                 )
-                RegionDivider(modifier = Modifier.fillMaxHeight())
+                RegionDivider(color = style.dividerColor, modifier = Modifier.fillMaxHeight())
             }
             GridBody(
                 columns = scrollableColumns,
                 dataSource = dataSource,
                 state = state,
                 rowHeight = rowHeight,
+                style = style,
+                globalColumnIndex = globalColumnIndex,
+                totalColumnCount = totalColumnCount,
                 rowKey = rowKey,
                 placeholderCell = placeholderCell,
                 modifier = Modifier.weight(1f),
             )
             if (pinnedEndColumns.isNotEmpty()) {
-                RegionDivider(modifier = Modifier.fillMaxHeight())
+                RegionDivider(color = style.dividerColor, modifier = Modifier.fillMaxHeight())
                 GridPinnedBody(
                     columns = pinnedEndColumns,
                     dataSource = dataSource,
                     state = state,
                     rowHeight = rowHeight,
+                    style = style,
+                    globalColumnIndex = globalColumnIndex,
+                    totalColumnCount = totalColumnCount,
                     rowKey = rowKey,
                     region = ColumnRegion.PinnedEnd,
                     placeholderCell = placeholderCell,
@@ -166,16 +221,38 @@ fun <T> DataGrid(
     }
 }
 
+/**
+ * Maps arrow keys to [FocusManager.moveFocus] spatial focus search among
+ * currently-composed, focusable descendants (every header/body cell — see
+ * [GridHeaderItemProvider.Item] / [GridBodyItemProvider.Item]). Applied once
+ * at the grid root rather than per-cell: a cell never consumes arrow-key
+ * events itself, so they bubble up to this handler regardless of which
+ * region (pinned-start/scrollable/pinned-end) currently holds focus.
+ */
+private fun Modifier.gridArrowKeyNavigation(focusManager: FocusManager): Modifier = onKeyEvent { keyEvent ->
+    if (keyEvent.type != KeyEventType.KeyDown) return@onKeyEvent false
+    val direction = when (keyEvent.key) {
+        Key.DirectionUp -> FocusDirection.Up
+        Key.DirectionDown -> FocusDirection.Down
+        Key.DirectionLeft -> FocusDirection.Left
+        Key.DirectionRight -> FocusDirection.Right
+        else -> return@onKeyEvent false
+    }
+    focusManager.moveFocus(direction)
+}
+
 @Composable
 private fun <T> GridHeader(
     columns: List<GridColumn<T>>,
     state: GridState,
     rowHeight: Dp,
+    style: GridStyle,
+    globalColumnIndex: Map<String, Int>,
     onSortChange: (GridColumn<T>, SortDirection) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val itemProvider = remember(columns, state, onSortChange) {
-        GridHeaderItemProvider(columns, state, onSortChange)
+    val itemProvider = remember(columns, state, style, globalColumnIndex, onSortChange) {
+        GridHeaderItemProvider(columns, state, style, globalColumnIndex, onSortChange)
     }
     LazyLayout(
         itemProvider = { itemProvider },
@@ -194,12 +271,15 @@ private fun <T> GridBody(
     dataSource: GridDataSource<T>,
     state: GridState,
     rowHeight: Dp,
+    style: GridStyle,
+    globalColumnIndex: Map<String, Int>,
+    totalColumnCount: Int,
     rowKey: (T) -> Any,
     placeholderCell: @Composable (loadState: GridLoadState) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val itemProvider = remember(columns, dataSource, rowKey, state, placeholderCell) {
-        GridBodyItemProvider(columns, dataSource, rowKey, state, placeholderCell)
+    val itemProvider = remember(columns, dataSource, rowKey, state, style, globalColumnIndex, placeholderCell) {
+        GridBodyItemProvider(columns, dataSource, rowKey, state, style, globalColumnIndex, placeholderCell)
     }
     val prefetchState = remember { LazyLayoutPrefetchState() }
     LazyLayout(
@@ -209,7 +289,8 @@ private fun <T> GridBody(
             .fillMaxWidth()
             .clipToBounds()
             .then(state.bodyRemeasurementModifiers.getValue(ColumnRegion.Scrollable))
-            .scrollable2D(state.scrollableState),
+            .scrollable2D(state.scrollableState)
+            .semantics { collectionInfo = CollectionInfo(dataSource.itemCount, totalColumnCount) },
         measurePolicy = bodyMeasurePolicy(columns, dataSource, state, rowHeight),
     )
 }
@@ -226,11 +307,13 @@ private fun <T> GridPinnedHeader(
     columns: List<GridColumn<T>>,
     state: GridState,
     rowHeight: Dp,
+    style: GridStyle,
+    globalColumnIndex: Map<String, Int>,
     onSortChange: (GridColumn<T>, SortDirection) -> Unit,
     region: ColumnRegion,
 ) {
-    val itemProvider = remember(columns, state, onSortChange) {
-        GridHeaderItemProvider(columns, state, onSortChange)
+    val itemProvider = remember(columns, state, style, globalColumnIndex, onSortChange) {
+        GridHeaderItemProvider(columns, state, style, globalColumnIndex, onSortChange)
     }
     LazyLayout(
         itemProvider = { itemProvider },
@@ -255,12 +338,15 @@ private fun <T> GridPinnedBody(
     dataSource: GridDataSource<T>,
     state: GridState,
     rowHeight: Dp,
+    style: GridStyle,
+    globalColumnIndex: Map<String, Int>,
+    totalColumnCount: Int,
     rowKey: (T) -> Any,
     region: ColumnRegion,
     placeholderCell: @Composable (loadState: GridLoadState) -> Unit,
 ) {
-    val itemProvider = remember(columns, dataSource, rowKey, state, placeholderCell) {
-        GridBodyItemProvider(columns, dataSource, rowKey, state, placeholderCell)
+    val itemProvider = remember(columns, dataSource, rowKey, state, style, globalColumnIndex, placeholderCell) {
+        GridBodyItemProvider(columns, dataSource, rowKey, state, style, globalColumnIndex, placeholderCell)
     }
     val prefetchState = remember { LazyLayoutPrefetchState() }
     LazyLayout(
@@ -269,7 +355,8 @@ private fun <T> GridPinnedBody(
         modifier = Modifier
             .clipToBounds()
             .then(state.bodyRemeasurementModifiers.getValue(region))
-            .scrollable2D(state.scrollableState),
+            .scrollable2D(state.scrollableState)
+            .semantics { collectionInfo = CollectionInfo(dataSource.itemCount, totalColumnCount) },
         measurePolicy = pinnedBodyMeasurePolicy(columns, dataSource, state, rowHeight),
     )
 }
@@ -277,6 +364,8 @@ private fun <T> GridPinnedBody(
 private class GridHeaderItemProvider<T>(
     private val columns: List<GridColumn<T>>,
     private val state: GridState,
+    private val style: GridStyle,
+    private val globalColumnIndex: Map<String, Int>,
     private val onSortChange: (GridColumn<T>, SortDirection) -> Unit,
 ) : LazyLayoutItemProvider {
     override val itemCount: Int get() = columns.size
@@ -285,18 +374,59 @@ private class GridHeaderItemProvider<T>(
     @Composable
     override fun Item(index: Int, key: Any) {
         val column = columns[index]
+        val interactionSource = remember { MutableInteractionSource() }
+        val isFocused by interactionSource.collectIsFocusedAsState()
+        val columnSortDirection = if (state.sortColumnId == column.id) state.sortDirection else SortDirection.None
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .clickable(enabled = column.sortable) {
+                .background(style.headerBackground)
+                .then(
+                    if (isFocused) Modifier.border(FocusRingWidth, style.focusIndicatorColor) else Modifier,
+                )
+                .clickable(
+                    enabled = column.sortable,
+                    interactionSource = interactionSource,
+                    indication = LocalIndication.current,
+                ) {
                     state.onHeaderClicked(column)
                     onSortChange(column, state.sortDirection)
+                }
+                .semantics {
+                    collectionItemInfo = CollectionItemInfo(
+                        rowIndex = 0,
+                        rowSpan = 1,
+                        columnIndex = globalColumnIndex.getValue(column.id),
+                        columnSpan = 1,
+                    )
+                    if (column.sortable) {
+                        role = Role.Button
+                        stateDescription = when (columnSortDirection) {
+                            SortDirection.None -> "Not sorted"
+                            SortDirection.Ascending -> "Sorted ascending"
+                            SortDirection.Descending -> "Sorted descending"
+                        }
+                    }
                 },
         ) {
-            column.header()
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = style.cellPadding),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Box(modifier = Modifier.weight(1f)) { column.header() }
+                if (column.sortable) style.sortIndicator(columnSortDirection)
+            }
             val rangeWidth = column.width as? GridColumnWidth.Range
             if (rangeWidth != null) {
-                ColumnResizeHandle(columnId = column.id, rangeWidth = rangeWidth, state = state)
+                ColumnResizeHandle(
+                    columnId = column.id,
+                    rangeWidth = rangeWidth,
+                    state = state,
+                    handleColor = style.dividerColor,
+                )
             }
         }
     }
@@ -313,6 +443,7 @@ private fun BoxScope.ColumnResizeHandle(
     columnId: String,
     rangeWidth: GridColumnWidth.Range,
     state: GridState,
+    handleColor: Color,
 ) {
     val density = LocalDensity.current
     val dragState = rememberDraggableState { deltaPx ->
@@ -349,7 +480,7 @@ private fun BoxScope.ColumnResizeHandle(
             modifier = Modifier
                 .fillMaxHeight()
                 .width(ResizeHandleVisibleWidth)
-                .background(GridLineColor),
+                .background(handleColor),
         )
     }
 }
@@ -378,7 +509,7 @@ private fun SystemGestureExclusionEffect(state: GridState) {
 private val ResizeHandleTouchWidth = 24.dp
 private val ResizeHandleVisibleWidth = 2.dp
 private val ResizeGutterWidth = 8.dp
-private val GridLineColor = Color(0x33000000)
+private val FocusRingWidth = 2.dp
 
 /**
  * A thin vertical line marking the boundary between a pinned region and the
@@ -392,11 +523,11 @@ private val GridLineColor = Color(0x33000000)
  * pass an explicit `Modifier.height(rowHeight)` instead.
  */
 @Composable
-private fun RegionDivider(modifier: Modifier = Modifier) {
+private fun RegionDivider(color: Color, modifier: Modifier = Modifier) {
     Box(
         modifier = modifier
             .width(RegionDividerWidth)
-            .background(GridLineColor),
+            .background(color),
     )
 }
 
@@ -407,6 +538,8 @@ private class GridBodyItemProvider<T>(
     private val dataSource: GridDataSource<T>,
     private val rowKey: (T) -> Any,
     private val state: GridState,
+    private val style: GridStyle,
+    private val globalColumnIndex: Map<String, Int>,
     private val placeholderCell: @Composable (loadState: GridLoadState) -> Unit,
 ) : LazyLayoutItemProvider {
     private val columnCount get() = columns.size
@@ -428,18 +561,49 @@ private class GridBodyItemProvider<T>(
         val column = columns[col]
         val item = dataSource.peek(row)
 
-        val cellModifier = if (item != null) {
-            val selected = state.selectedRowKeys.contains(rowKey(item))
-            Modifier
-                .fillMaxSize()
-                .background(if (selected) SelectedRowOverlay else Color.Transparent)
-                .clickable { state.toggleSelection(rowKey(item)) }
-        } else {
-            Modifier.fillMaxSize()
+        if (item == null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(style.rowBackground)
+                    .padding(horizontal = style.cellPadding),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                placeholderCell(dataSource.loadState)
+            }
+            return
         }
 
-        Box(modifier = cellModifier) {
-            if (item != null) column.cell(item) else placeholderCell(dataSource.loadState)
+        val itemSelected = state.selectedRowKeys.contains(rowKey(item))
+        val interactionSource = remember { MutableInteractionSource() }
+        val isFocused by interactionSource.collectIsFocusedAsState()
+
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(if (itemSelected) style.selectedRowBackground else style.rowBackground)
+                .then(
+                    if (isFocused) Modifier.border(FocusRingWidth, style.focusIndicatorColor) else Modifier,
+                )
+                .clickable(
+                    interactionSource = interactionSource,
+                    indication = LocalIndication.current,
+                ) {
+                    state.toggleSelection(rowKey(item))
+                }
+                .semantics {
+                    selected = itemSelected
+                    collectionItemInfo = CollectionItemInfo(
+                        rowIndex = row,
+                        rowSpan = 1,
+                        columnIndex = globalColumnIndex.getValue(column.id),
+                        columnSpan = 1,
+                    )
+                }
+                .padding(horizontal = style.cellPadding),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            column.cell(item)
         }
     }
 }
@@ -643,5 +807,3 @@ private fun visibleRowRange(
     val last = (ceil(viewEnd / rowHeightPx).toInt() - 1).coerceIn(0, rowCount - 1)
     return if (first > last) IntRange.EMPTY else first..last
 }
-
-private val SelectedRowOverlay = Color(0x1F6750A4)

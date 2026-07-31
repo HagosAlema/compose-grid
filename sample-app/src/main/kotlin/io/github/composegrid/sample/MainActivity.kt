@@ -6,19 +6,26 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.PrimaryTabRow
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.paging.Pager
@@ -33,6 +40,7 @@ import io.github.composegrid.core.GridColumnWidth
 import io.github.composegrid.core.GridLoadState
 import io.github.composegrid.core.asGridDataSource
 import io.github.composegrid.core.rememberGridState
+import io.github.composegrid.material3.GridDefaults
 import io.github.composegrid.paging.asGridDataSource
 import kotlinx.coroutines.delay
 
@@ -121,7 +129,7 @@ private fun employeeColumns(): List<GridColumn<Employee>> = listOf(
     GridColumn(
         id = "name",
         header = { Text("Name") },
-        width = GridColumnWidth.Range(60.dp, max = 160.dp, initial = 60.dp),
+        width = GridColumnWidth.Range(min = 80.dp, max = 200.dp, initial = 140.dp),
         sortable = true,
         pinned = ColumnPin.Start,
         cell = { Text(it.name) },
@@ -186,20 +194,35 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            MaterialTheme {
+            var darkTheme by remember { mutableStateOf(false) }
+            val colorScheme = if (darkTheme) darkColorScheme() else lightColorScheme()
+            MaterialTheme(colorScheme = colorScheme) {
                 Surface {
-                    SampleAppRoot()
+                    SampleAppRoot(darkTheme = darkTheme, onDarkThemeChange = { darkTheme = it })
                 }
             }
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class) // TopAppBar
 @Composable
-fun SampleAppRoot() {
+fun SampleAppRoot(darkTheme: Boolean, onDarkThemeChange: (Boolean) -> Unit) {
     var selectedTab by remember { mutableStateOf(0) }
 
-    Scaffold { padding ->
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("ComposeGrid sample") },
+                actions = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("Dark theme")
+                        Switch(checked = darkTheme, onCheckedChange = onDarkThemeChange)
+                    }
+                },
+            )
+        },
+    ) { padding ->
         Column(modifier = Modifier.padding(padding).fillMaxSize()) {
             PrimaryTabRow(selectedTabIndex = selectedTab) {
                 Tab(
@@ -231,6 +254,7 @@ fun EmployeeGridScreen() {
         dataSource = dataSource,
         state = gridState,
         modifier = Modifier.fillMaxSize(),
+        style = GridDefaults.style(),
         rowKey = { it.id },
     )
 }
@@ -252,6 +276,7 @@ fun PagedEmployeeGridScreen() {
         dataSource = dataSource,
         state = gridState,
         modifier = Modifier.fillMaxSize(),
+        style = GridDefaults.style(),
         rowKey = { it.id },
         placeholderCell = { loadState ->
             when (loadState) {
