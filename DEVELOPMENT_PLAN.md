@@ -2,7 +2,7 @@
 
 *A performant, virtualized, feature-rich data table/grid for Jetpack Compose (Android).*
 
-> Working name: `ComposeGrid` — swap for whatever we land on (see Naming section).
+> Name: **ComposeGrid** — settled, see §6.1.
 
 ---
 
@@ -143,34 +143,38 @@ don't pull in the Paging 3 dependency.
 
 ## 5. Milestones
 
-**M0 — Project scaffolding** (small)
+> **Status:** M0–M7 complete. M8 is the only milestone outstanding, and what
+> remains of it is account-side setup that can't be done from the repo — see
+> [`RELEASING.md`](./RELEASING.md).
+
+**M0 — Project scaffolding** ✅ (small)
 Repo, module structure, CI skeleton, license, README stub, sample app shell.
 
-**M1 — Rendering core (walking skeleton)**
+**M1 — Rendering core (walking skeleton)** ✅
 Basic `DataGrid` rendering a `List<T>` with fixed-width columns, vertical virtualization
 only (no horizontal scroll/freeze yet). Proves the `LazyLayout` approach works.
 
-**M2 — Horizontal scroll + column resizing**
+**M2 — Horizontal scroll + column resizing** ✅
 Full 2D virtualization, drag-to-resize columns with min/max constraints.
 
-**M3 — Column freezing/pinning**
+**M3 — Column freezing/pinning** ✅
 Left/right pinned columns, scroll-sync between frozen and scrollable regions.
 
-**M4 — Sorting + row selection**
+**M4 — Sorting + row selection** ✅
 Header click-to-sort, single/multi row selection with checkbox column.
 
-**M5 — Paging integration**
+**M5 — Paging integration** ✅
 `grid-paging` artifact, `LazyPagingItems` adapter, loading/placeholder states.
 
-**M6 — Theming & polish**
+**M6 — Theming & polish** ✅
 `grid-material3` defaults, customization API pass, accessibility (TalkBack row/cell
 semantics, keyboard navigation if feasible).
 
-**M7 — Docs, samples, benchmarks**
+**M7 — Docs, samples, benchmarks** ✅
 Full README, API docs via Dokka, sample app covering every feature, benchmark suite
 green and tracked.
 
-**M8 — Publish v1.0.0**
+**M8 — Publish (shipping as `0.1.0`, not `1.0.0` — see §6.4)** ⏳
 Maven Central release, GitHub release notes, announce.
 
 *Suggested cadence: each milestone as its own PR/branch with a working sample-app demo
@@ -178,20 +182,63 @@ attached, so we can sanity-check the API feel before locking it in.*
 
 ---
 
-## 6. Open Decisions (let's answer before/at M0)
+## 6. Decisions (resolved)
 
-1. **Library name** — needs to be distinct enough for a Maven Central `groupId:artifactId`
-   and not collide with existing libraries. Candidates to brainstorm: something evoking
-   "grid," "table," "sheet." Worth a quick GitHub/Maven search before committing.
-2. **groupId** — typically `io.github.<username>` if publishing without owning a custom
-   domain, which is the simplest path through Sonatype Central Portal's verification.
-3. **Repo name / GitHub org** — personal account vs. a dedicated org for the project.
-4. **Versioning policy** — SemVer, starting at `0.1.0` during M1–M7 (signaling "API may
-   shift"), graduating to `1.0.0` at M8.
+1. **Library name — `ComposeGrid` / repo `compose-grid`.** Kept after checking
+   for collisions: no Maven Central artifact matches `composegrid`, and no
+   GitHub project uses the name. `compose-table` was considered and rejected —
+   it's taken twice on GitHub (`windedge/compose-table`,
+   `tinytinycn/compose-table`) and sits in a crowded field alongside
+   `ComposeDataTable`, `composable-table`, `compose-data-table`, and
+   `Jetpack-Compose-Tables`. "Table" is the more accurate category word, but
+   uniqueness beat accuracy: the ambiguity with Compose's *layout* grids is
+   fixable with a README tagline and GitHub topics, whereas the name collision
+   is not. Keeping "grid" also keeps the `DataGrid` composable name coherent,
+   which matches WPF/AG Grid/MUI convention for this component.
+2. **groupId — `io.github.hagosalema`.** The reverse-DNS of
+   `hagosalema.github.io`, mapping to the GitHub account the Sonatype namespace
+   verifies against. `io.github.composegrid` was the original plan but could
+   never verify: Sonatype grants an `io.github.<name>` namespace only to whoever
+   controls that account, and no `composegrid` user or org exists. Kotlin
+   packages stay `io.github.composegrid` — groupId and package name don't have
+   to agree. A useful side effect: the groupId is independent of the project
+   name, so any future rename wouldn't drag the coordinates with it.
+3. **Repo — personal account (`HagosAlema/compose-grid`).** A dedicated org buys
+   nothing until there are co-maintainers, and moving to one later is cheap
+   (GitHub redirects the repo) *because* the groupId doesn't encode the owner.
+4. **Versioning — SemVer, first release `0.1.0`.** Deliberately not `1.0.0` as
+   originally sketched for M8. `1.0.0` is a commitment to the current public
+   surface, and that surface moved substantially during M6/M7 — `GridStyle`'s
+   composable slots, the sorting helpers, and `GridColumn.comparator` are all
+   new and unexercised by real consumers. Better to live on `0.x` through some
+   real usage first.
 
 ---
 
-## 7. Risks / Watch-items
+## 7. Remaining work
+
+Outside the v1 scope but worth tracking:
+
+- **Keyboard navigation can't cross a scroll boundary.** Arrow keys move focus
+  via `FocusManager.moveFocus`, which only sees currently-composed cells, so a
+  keyboard user can't reach an off-screen row or column without scrolling
+  first. The scroll semantics added in M7 (`scrollBy` plus axis ranges) are the
+  building block for fixing this.
+- **Resize handle touch target is 24dp wide**, under Material's 48dp minimum.
+  Widening it would start swallowing header taps on narrow columns, so it needs
+  a deliberate design decision rather than a bump.
+- **Uniform row height only.** Variable per-row height was excluded from v1 and
+  would need a different `visibleRowRange` strategy than the current O(1) math.
+- **Sample app doesn't cover quite everything** M7 claimed: there's no
+  `ColumnPin.End` demo, no visible selection UI driven by
+  `GridState.selectedRowKeys`, and no demonstration of
+  `SortIndicatorPosition.Leading`.
+- **Screenshot testing** (Paparazzi or Roborazzi) is listed in §4 but not set
+  up. Worth having before the API freezes, since theming is now a real surface.
+
+---
+
+## 8. Risks / Watch-items
 
 - **2D virtualization on `LazyLayout` is the highest-risk technical piece.** It's
   under-documented territory; budget extra time in M1–M3 and be ready to fall back to a
