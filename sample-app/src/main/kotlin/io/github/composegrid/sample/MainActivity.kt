@@ -42,6 +42,8 @@ import io.github.composegrid.core.SortDirection
 import io.github.composegrid.core.rememberGridState
 import io.github.composegrid.core.rememberSortedGridDataSource
 import io.github.composegrid.material3.GridDefaults
+import io.github.composegrid.material3.Material3ResizeHandle
+import io.github.composegrid.material3.toGridStyle
 import io.github.composegrid.paging.asGridDataSource
 import kotlinx.coroutines.delay
 
@@ -258,20 +260,31 @@ fun SampleAppRoot(darkTheme: Boolean, onDarkThemeChange: (Boolean) -> Unit) {
     }
 }
 
-/** In-memory sorting: [rememberSortedGridDataSource] reorders rows from each column's comparator. */
+/**
+ * In-memory sorting: [rememberSortedGridDataSource] reorders rows from each
+ * column's comparator.
+ *
+ * Also opts into [Material3ResizeHandle], so this tab shows the chevron
+ * resize affordance (visible when hovered with a mouse, or while dragging)
+ * while the Paged tab keeps the plain default line.
+ */
 @Composable
 fun EmployeeGridScreen() {
     val employees = remember { sampleEmployees() }
     val columns = remember { employeeColumns() }
     val gridState = rememberGridState()
     val dataSource = rememberSortedGridDataSource(employees, columns, gridState)
+    val colors = GridDefaults.colors()
+    val style = remember(colors) {
+        colors.toGridStyle(resizeHandle = { handleState -> Material3ResizeHandle(handleState) })
+    }
 
     DataGrid(
         columns = columns,
         dataSource = dataSource,
         state = gridState,
         modifier = Modifier.fillMaxSize(),
-        style = GridDefaults.style(),
+        style = style,
         rowKey = { it.id },
     )
 }

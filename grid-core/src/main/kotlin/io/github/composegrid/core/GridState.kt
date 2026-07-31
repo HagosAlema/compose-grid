@@ -125,6 +125,18 @@ class GridState(
     }
 
     /**
+     * Widens ([by] positive) or narrows ([by] negative) a resizable column,
+     * clamped to its [GridColumnWidth.Range]. Shared by the drag handle and
+     * the header's resize accessibility actions so both apply identical
+     * bounds — a drag can't overshoot the range and neither can a TalkBack
+     * user repeatedly invoking "Increase column width".
+     */
+    internal fun resizeColumn(columnId: String, range: GridColumnWidth.Range, by: Dp) {
+        val current = columnWidthOverrides[columnId] ?: range.initial
+        setColumnWidthOverride(columnId, (current + by).coerceIn(range.min, range.max))
+    }
+
+    /**
      * Bounds (in window coordinates) of every currently-composed resize
      * handle, keyed by column id. [DataGrid] mirrors this into
      * `View.systemGestureExclusionRects` (API 29+) so a resize drag starting
