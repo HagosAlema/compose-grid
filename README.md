@@ -2,105 +2,245 @@
 
 A performant, virtualized, feature-rich data table/grid for Jetpack Compose (Android).
 
-> **Status: pre-alpha (M1 scaffolding).** The public API is still moving —
-> expect breaking changes on every `0.x` release. See
-> [`DEVELOPMENT_PLAN.md`](./DEVELOPMENT_PLAN.md) for the full roadmap and
-> current milestone.
+> **Status: `0.1.0`, pre-release.** Every feature in the v1 scope is implemented
+> and tested, but the public API has not been frozen — expect breaking changes
+> on `0.x` releases. See [`DEVELOPMENT_PLAN.md`](./DEVELOPMENT_PLAN.md) for the
+> roadmap and [`CHANGELOG.md`](./CHANGELOG.md) for what has landed.
 
 ## Why
 
 Compose doesn't have a solid, actively maintained data grid. Every
-large-screen/dashboard/admin Compose app either hand-rolls one or falls back
-to a `WebView`. ComposeGrid aims to fix that with:
+large-screen/dashboard/admin Compose app either hand-rolls one or falls back to
+a `WebView`. ComposeGrid aims to fix that with:
 
-- **Real row virtualization** — only visible rows are composed, built on the
-  same `LazyLayout` primitive that powers `LazyColumn`.
+- **Real 2D virtualization** — only cells whose row *and* column intersect the
+  viewport are composed, built directly on `LazyLayout` (the primitive behind
+  `LazyColumn`) rather than layered on top of it.
 - **Column resizing and freezing** that work *with* Compose's layout system
-  instead of fighting it.
+  instead of fighting it. Pinned columns are a separate `LazyLayout` pass
+  sharing one scroll state, not a clipping trick.
 - **A `LazyColumn`-shaped API** — columns are plain Kotlin objects with
   composable slots, so you keep full control of cell rendering.
-- **Pluggable data sources** — plain `List<T>` today, Paging 3 support via
-  the separate `grid-paging` artifact.
+- **Pluggable data sources** — plain `List<T>`, or Paging 3 via the separate
+  `grid-paging` artifact.
+- **Accessibility that isn't an afterthought** — row/column semantics, sort
+  state announcements, a scrollable container TalkBack can actually page
+  through, and column resizing that works without a drag gesture.
 
 ## Modules
 
 | Module | Purpose |
 |---|---|
-| `grid-core` | Rendering engine, column model, `GridState`. No Material3 or Paging dependency. |
+| `grid-core` | Rendering engine, column model, `GridState`, sorting helpers. No Material3 or Paging dependency. |
+| `grid-material3` | Optional: Material3-token defaults — colors, sort indicator, resize handle. |
 | `grid-paging` | Optional: `LazyPagingItems` → `GridDataSource` adapter. |
-| `grid-material3` | Optional: Material3-themed defaults (colors, sort icons, selection styling). |
-| `sample-app` | Demo Android app. |
-| `benchmark` | Macrobenchmark suite for scroll/frame-timing regressions. |
+| `sample-app` | Demo app covering every feature. |
+| `benchmark` | Macrobenchmark suite for scroll and startup frame timing. |
+
+`grid-core` is usable on its own — it deliberately depends on neither Material3
+nor Paging, so you can bring your own design system.
+
+## Installation
+
+Not yet published to Maven Central; see [`RELEASING.md`](./RELEASING.md) for the
+remaining steps. Once released:
+
+```kotlin
+dependencies {
+    implementation("io.github.composegrid:grid-core:0.1.0")
+    // optional
+    implementation("io.github.composegrid:grid-material3:0.1.0")
+    implementation("io.github.composegrid:grid-paging:0.1.0")
+}
+```
 
 ## Quick start
 
 ```kotlin
-val columns = listOf(
-    GridColumn<Employee>(
-        id = "name",
-        header = { Text("Name") },
-        width = GridColumnWidth.Fixed(160.dp),
-        sortable = true,
-        cell = { Text(it.name) },
-    ),
-    // ...more columns
-)
+val columns = remember {
+    listOf(
+        GridColumn<Employee>(
+            id = "name",
+            header = { Text("Name") },
+            width = GridColumnWidth.Range(min = 80.dp, max = 200.dp, initial = 140.dp),
+            sortable = true,
+            comparator = compareBy { it.name },
+            pinned = ColumnPin.Start,
+            cell = { Text(it.name) },
+        ),
+        GridColumn<Employee>(
+            id = "department",
+            header = { Text("Department") },
+            width = GridColumnWidth.Fixed(140.dp),
+            sortable = true,
+            comparator = compareBy { it.department },
+            cell = { Text(it.department) },
+        ),
+    )
+}
+val gridState = rememberGridState()
 
 DataGrid(
     columns = columns,
-    dataSource = employees.asGridDataSource(),
+    dataSource = rememberSortedGridDataSource(employees, columns, gridState),
+    state = gridState,
+    style = GridDefaults.style(), // from grid-material3
     rowKey = { it.id },
 )
 ```
 
-See `sample-app/src/main/kotlin/io/github/composegrid/sample/MainActivity.kt`
-for a complete runnable example.
+Hold `columns` in a `remember`: `DataGrid` keys internal item providers on it.
+
+## Guides
+
+### Column sizing
+
+| `GridColumnWidth` | Behaviour |
+|---|---|
+| `Fixed(dp)` | Exact width, ignored by weighted distribution. |
+| `Weighted(f)` | Splits leftover space proportionally among weighted columns. |
+| `Range(min, max, initial)` | User-resizable by dragging the header edge, clamped to the range. |
+
+### Column freezing
+
+Set `pinned = ColumnPin.Start` or `ColumnPin.End`. Pinned columns are exempt
+from horizontal scroll but share the vertical scroll state, so they stay in
+lockstep with the scrollable region. Any number of columns can be pinned to
+either edge.
+
+### Sorting
+
+`DataGrid` owns the sort *state* but never reorders your data. The data belongs
+to the `GridDataSource`, and a paged or network-backed source can only be
+ordered at the source — so the grid reports the click and you decide what
+happens.
+
+**In-memory**: give each sortable column a `comparator` and wrap your list:
+
+```kotlin
+val dataSource = rememberSortedGridDataSource(items, columns, gridState)
+```
+
+**Server-side**: leave `comparator` null, keep `sortable = true`, and react to
+the change. A column being `sortable` with no comparator is the deliberate
+signal for "the backend orders this."
+
+```kotlin
+DataGrid(
+    columns = columns,
+    dataSource = pagingItems.asGridDataSource(),
+    state = gridState,
+    onSortChange = { column, direction -> viewModel.reload(column.id, direction) },
+)
+```
+
+Both patterns are demonstrated in the sample app's two tabs. Clicking a header
+cycles ascending → descending → none.
+
+### Selection
+
+`GridState` exposes `selectedRowKeys`, `toggleSelection(key)`, and
+`clearSelection()`. Tapping a cell toggles its row. Hoist the state above the
+grid to drive an external "N selected" toolbar:
+
+```kotlin
+val gridState = rememberGridState()
+Text("${gridState.selectedRowKeys.size} selected")
+DataGrid(state = gridState, /* ... */)
+```
+
+### Theming
+
+`grid-core` takes a design-system-agnostic `GridStyle` of plain `Color`s.
+`grid-material3` builds one from Material3 tokens:
+
+```kotlin
+val style = GridDefaults.style()                       // ready-made
+val style = GridDefaults.colors()
+    .copy(selectedRowBackground = MaterialTheme.colorScheme.tertiaryContainer)
+    .toGridStyle()                                     // tweak the tokens
+```
+
+`GridStyle` carries two composable slots — `sortIndicator` and `resizeHandle` —
+so you can replace those affordances without touching grid internals. An
+icon-style resize handle ships as an opt-in:
+
+```kotlin
+colors.toGridStyle(resizeHandle = { Material3ResizeHandle(it) })
+```
+
+**Keep the style in a stable reference.** Its slots compare by reference and
+`DataGrid` keys item providers on the instance, so a style rebuilt inline every
+recomposition throws those providers away each time. `GridStyle.Default` and
+`GridDefaults.style()` are both safe; wrap hand-built ones in `remember`.
+
+### Accessibility
+
+Supported out of the box:
+
+- Rows and cells expose `CollectionInfo`/`CollectionItemInfo`, so TalkBack
+  announces "row 3, column 2" style positions — correct even across the
+  pinned/scrollable split.
+- Sortable headers are `Role.Button` with a `stateDescription` of the current
+  sort direction.
+- Selected rows report `selected`.
+- The body is a real scroll container (`scrollBy` plus scroll-axis ranges), so
+  TalkBack can page through it and reach off-screen rows.
+- Resizable columns expose "Increase/Decrease column width" custom actions,
+  because dragging alone is not operable by TalkBack or switch access.
+- Every cell is a focus target with a themed focus ring, and arrow keys move
+  focus between cells.
+
+Known gap: arrow-key navigation only reaches *currently composed* cells, so
+keyboard users can't yet cross a scroll boundary without scrolling first.
 
 ## Building locally
 
-This repo's Gradle wrapper jar (`gradle/wrapper/gradle-wrapper.jar`) is
-intentionally **not** checked in from this scaffolding pass — it's a binary
-that needs to be fetched from `services.gradle.org`, which wasn't reachable
-from the sandbox this scaffold was generated in. Before your first build:
-
 ```bash
-gradle wrapper --gradle-version 9.5.1   # requires a local Gradle install
+./gradlew build                        # everything
+./gradlew test                         # unit tests
+./gradlew :grid-core:connectedDebugAndroidTest   # instrumented tests (needs a device)
+./gradlew :sample-app:installDebug     # install the demo
+./gradlew dokkaGeneratePublicationHtml # API docs -> build/dokka/html
 ```
 
-This generates `gradlew`, `gradlew.bat`, and the wrapper jar from the
-`gradle-wrapper.properties` already in this repo. After that, the usual
-commands apply:
+Requirements: **JDK 17**, **Android SDK Platform 37**, and **Android Studio
+Otter 3 Feature Drop or later** (needed for AGP 9.x).
+
+### Benchmarks
 
 ```bash
-./gradlew build          # build all modules
-./gradlew :sample-app:installDebug   # install the demo app
-./gradlew test           # unit tests
+./gradlew :benchmark:connectedBenchmarkAndroidTest
 ```
 
-You'll also need:
-- **Android SDK Platform 37** installed, with a `local.properties` pointing
-  at your SDK (or `ANDROID_HOME` set) — Android Studio generates this
-  automatically on first open.
-- **Android Studio Otter 3 Feature Drop or later** (required for AGP 9.x).
-- **JDK 17.**
+Run these on a **physical device**. Macrobenchmark deliberately refuses to run
+on an emulator, where the host scheduler and absent thermal behaviour swamp the
+signal. To smoke-test the harness itself — not to get real numbers:
+
+```bash
+./gradlew :benchmark:connectedBenchmarkAndroidTest -Pcomposegrid.benchmark.suppressErrors=EMULATOR
+```
 
 ### On the AGP 9 toolchain
 
-This project targets **AGP 9.3.0**, which made Kotlin compilation a built-in
-part of the Android Gradle plugin — you'll notice there's no
-`org.jetbrains.kotlin.android` plugin applied anywhere in this repo, and no
-`kotlinOptions { jvmTarget = ... }` blocks. That's intentional, not an
-oversight; see the comments in each `build.gradle.kts` for details. If you
-hit a plugin incompatibility (some third-party Gradle plugins haven't caught
-up yet), Google's migration guide covers the `android.builtInKotlin=false`
-temporary opt-out: https://developer.android.com/build/migrate-to-built-in-kotlin
+This project targets **AGP 9.3.0**, which made Kotlin compilation part of the
+Android Gradle plugin — there's no `org.jetbrains.kotlin.android` plugin applied
+anywhere and no `kotlinOptions { jvmTarget = ... }` blocks. That's intentional.
+
+One consequence worth knowing: tooling that discovers source sets *through* the
+Kotlin Gradle Plugin finds none, because it isn't applied. Dokka is affected,
+which is why each library module registers its source roots explicitly. If you
+hit a plugin incompatibility, Google's migration guide covers the
+`android.builtInKotlin=false` opt-out:
+https://developer.android.com/build/migrate-to-built-in-kotlin
 
 ## Roadmap
 
-See [`DEVELOPMENT_PLAN.md`](./DEVELOPMENT_PLAN.md) for the full milestone
-breakdown (M0–M8). Current milestone: **M1 — rendering core walking
-skeleton** (vertical virtualization only; horizontal scroll, column
-resizing, and freezing land in M2/M3).
+See [`DEVELOPMENT_PLAN.md`](./DEVELOPMENT_PLAN.md). M0–M7 are complete; M8 is
+the Maven Central release.
+
+Deferred past v1 by design: cell editing, grouping/pivoting, filtering UI,
+multi-column sort, column reordering, export, and Compose Multiplatform.
 
 ## License
 

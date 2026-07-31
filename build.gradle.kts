@@ -1,12 +1,35 @@
 plugins {
     alias(libs.plugins.android.application) apply false
     alias(libs.plugins.android.library) apply false
+    alias(libs.plugins.android.test) apply false
     // Kotlin compilation is built into AGP 9+ — no separate kotlin-android
     // plugin needed. kotlin-compose (the Compose compiler) is unaffected.
     alias(libs.plugins.kotlin.compose) apply false
     alias(libs.plugins.maven.publish) apply false
+    alias(libs.plugins.dokka)
 }
 
-tasks.register("clean", Delete::class) {
-    delete(rootProject.buildDir)
+// Single source of truth for the published coordinates. Every publishable
+// module inherits these rather than repeating them, so cutting a release is a
+// one-line change here — see RELEASING.md.
+allprojects {
+    group = "io.github.composegrid"
+    version = "0.1.0"
 }
+
+// Aggregate the three library modules into one API reference. sample-app and
+// benchmark are deliberately excluded: they aren't published, so their
+// internals aren't part of the public surface.
+dependencies {
+    dokka(project(":grid-core"))
+    dokka(project(":grid-paging"))
+    dokka(project(":grid-material3"))
+}
+
+dokka {
+    moduleName.set("ComposeGrid")
+}
+
+// No hand-rolled `clean` task here: Dokka applies the `base` plugin, which
+// already contributes one, and registering a second by that name fails the
+// build.

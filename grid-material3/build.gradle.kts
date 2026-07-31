@@ -2,6 +2,7 @@ plugins {
     alias(libs.plugins.android.library)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.maven.publish)
+    alias(libs.plugins.dokka)
 }
 
 android {
@@ -30,4 +31,68 @@ dependencies {
     implementation(libs.compose.material3)
 
     testImplementation(libs.junit)
+}
+
+// Published to Maven Central via the Sonatype Central Portal. groupId and
+// version come from the root build.gradle.kts so all artifacts stay in step.
+//
+// Signing and Sonatype credentials are read from the environment / Gradle
+// properties and are never checked in — see RELEASING.md.
+mavenPublishing {
+    publishToMavenCentral()
+
+    // Sign only when a key is actually configured. Maven Central rejects
+    // unsigned artifacts and release.yml supplies the key, so real releases are
+    // always signed — but requiring one unconditionally would make
+    // `publishToMavenLocal` impossible to run without a GPG key, which is the
+    // cheapest way to inspect what a release would contain. See RELEASING.md.
+    if (providers.gradleProperty("signingInMemoryKey").isPresent ||
+        providers.gradleProperty("signing.keyId").isPresent
+    ) {
+        signAllPublications()
+    }
+
+    coordinates(group.toString(), "grid-material3", version.toString())
+
+    pom {
+        name.set("ComposeGrid Material3")
+        description.set("Material3-themed defaults for ComposeGrid: colors, sort indicator, and resize handle built from Material3 tokens.")
+        inceptionYear.set("2026")
+        url.set("https://github.com/HagosAlema/compose-grid")
+
+        licenses {
+            license {
+                name.set("The Apache License, Version 2.0")
+                url.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
+                distribution.set("https://www.apache.org/licenses/LICENSE-2.0.txt")
+            }
+        }
+        developers {
+            developer {
+                id.set("HagosAlema")
+                name.set("Hagos Alema")
+                url.set("https://github.com/HagosAlema")
+            }
+        }
+        scm {
+            url.set("https://github.com/HagosAlema/compose-grid")
+            connection.set("scm:git:git://github.com/HagosAlema/compose-grid.git")
+            developerConnection.set("scm:git:ssh://git@github.com/HagosAlema/compose-grid.git")
+        }
+    }
+}
+
+// AGP 9 compiles Kotlin itself, so the Kotlin Gradle Plugin is never applied
+// and Dokka has no source sets to auto-discover — it would emit an empty
+// module page. Point it at the sources explicitly.
+dokka {
+    dokkaSourceSets.register("main") {
+        sourceRoots.from(file("src/main/kotlin"))
+        jdkVersion.set(17)
+        sourceLink {
+            localDirectory.set(file("src/main/kotlin"))
+            remoteUrl("https://github.com/HagosAlema/compose-grid/tree/master/grid-material3/src/main/kotlin")
+            remoteLineSuffix.set("#L")
+        }
+    }
 }

@@ -19,6 +19,16 @@ android {
         release {
             isMinifyEnabled = false
         }
+        // The app-under-test variant for :benchmark. Macrobenchmark refuses to
+        // measure a debuggable build (and the numbers would be meaningless if
+        // it did), but a release build here would be unsigned and therefore
+        // uninstallable — so this is release-like, signed with the debug key.
+        create("benchmark") {
+            initWith(buildTypes.getByName("release"))
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("debug")
+            matchingFallbacks += listOf("release")
+        }
     }
 
     compileOptions {

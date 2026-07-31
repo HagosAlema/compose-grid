@@ -3,6 +3,7 @@ package io.github.composegrid.core
 import androidx.compose.foundation.text.BasicText
 import androidx.compose.ui.semantics.CollectionInfo
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
@@ -14,6 +15,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -140,5 +142,53 @@ class DataGridAccessibilityTest {
                 CollectionInfo(rowCount = people.size, columnCount = 2),
             ),
         ).assertExists()
+    }
+
+    /**
+     * The grid used to be touch-scrollable but invisible as a scroll container
+     * to accessibility services — TalkBack could not page through it and could
+     * not reach off-screen rows. Caught by the macrobenchmark, which locates
+     * the grid via `By.scrollable(true)` and found nothing.
+     */
+    @Test
+    fun bodyIsDiscoverableAsAScrollContainer() {
+        setGrid()
+
+        composeRule.onNode(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.VerticalScrollAxisRange),
+        ).assertExists()
+        composeRule.onNode(
+            SemanticsMatcher.keyIsDefined(SemanticsProperties.HorizontalScrollAxisRange),
+        ).assertExists()
+        composeRule.onNode(
+            SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollBy),
+        ).assertExists()
+    }
+
+    @Test
+    fun scrollByActionMovesTheViewport() {
+        setGrid()
+
+        val node = composeRule.onNode(
+            SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollBy),
+        ).fetchSemanticsNode()
+        val before = node.config[SemanticsProperties.VerticalScrollAxisRange].value()
+
+        // A short grid may already be fully visible, in which case there is
+        // nothing to scroll; only assert movement when there is headroom.
+        val maxScroll = node.config[SemanticsProperties.VerticalScrollAxisRange].maxValue()
+        if (maxScroll <= 0f) return
+
+        composeRule.runOnUiThread {
+            node.config[SemanticsActions.ScrollBy].action?.invoke(0f, maxScroll)
+        }
+        composeRule.waitForIdle()
+
+        val after = composeRule.onNode(
+            SemanticsMatcher.keyIsDefined(SemanticsActions.ScrollBy),
+        ).fetchSemanticsNode()
+            .config[SemanticsProperties.VerticalScrollAxisRange].value()
+
+        assertTrue("expected scroll position to advance past $before, was $after", after > before)
     }
 }

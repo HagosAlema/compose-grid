@@ -61,13 +61,17 @@ import androidx.compose.ui.semantics.CollectionInfo
 import androidx.compose.ui.semantics.CollectionItemInfo
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.ScrollAxisRange
 import androidx.compose.ui.semantics.collectionInfo
 import androidx.compose.ui.semantics.collectionItemInfo
 import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.horizontalScrollAxisRange
 import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.scrollBy
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.verticalScrollAxisRange
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -298,7 +302,25 @@ private fun <T> GridBody(
             .clipToBounds()
             .then(state.bodyRemeasurementModifiers.getValue(ColumnRegion.Scrollable))
             .scrollable2D(state.scrollableState)
-            .semantics { collectionInfo = CollectionInfo(dataSource.itemCount, totalColumnCount) },
+            .semantics {
+                collectionInfo = CollectionInfo(dataSource.itemCount, totalColumnCount)
+                // Without these the grid is touch-scrollable but invisible as
+                // a scroll container to accessibility services: TalkBack can't
+                // page through it and can't reach rows that are off-screen.
+                // Declared only on the scrollable region — the pinned regions
+                // share this scroll state, so scrolling here moves them too,
+                // and advertising three separate scrollables would just be
+                // noise to traverse.
+                verticalScrollAxisRange = ScrollAxisRange(
+                    value = { state.scrollOffset.y },
+                    maxValue = { state.maxScroll.y },
+                )
+                horizontalScrollAxisRange = ScrollAxisRange(
+                    value = { state.scrollOffset.x },
+                    maxValue = { state.maxScroll.x },
+                )
+                scrollBy { x, y -> state.scrollBy(Offset(x, y)) != Offset.Zero }
+            },
         measurePolicy = bodyMeasurePolicy(columns, dataSource, state, rowHeight),
     )
 }

@@ -47,11 +47,32 @@ class GridState(
     var scrollOffset: Offset by mutableStateOf(Offset.Zero)
         private set
 
-    private var maxScrollOffset: Offset = Offset.Zero
+    private var maxScrollOffset: Offset by mutableStateOf(Offset.Zero)
+
+    /**
+     * Furthest the grid can scroll on each axis, in pixels. Exposed for the
+     * scroll semantics `DataGrid` publishes, which need a max as well as a
+     * current value to describe scroll position to accessibility services.
+     */
+    internal val maxScroll: Offset get() = maxScrollOffset
 
     internal fun updateScrollBounds(maxOffset: Offset) {
         maxScrollOffset = maxOffset
         scrollOffset = scrollOffset.coerceIn(maxOffset)
+    }
+
+    /**
+     * Scrolls by [delta] pixels and returns what was actually consumed after
+     * clamping. Backs the `scrollBy` accessibility action, so TalkBack and
+     * other services can move the viewport without a drag gesture — the grid
+     * is only touch-scrollable otherwise.
+     */
+    internal fun scrollBy(delta: Offset): Offset {
+        val target = (scrollOffset + delta).coerceIn(maxScrollOffset)
+        val consumed = target - scrollOffset
+        scrollOffset = target
+        forceRemeasureAll()
+        return consumed
     }
 
     // A LazyLayout is backed by SubcomposeLayout, which — unlike a plain Layout {} —
