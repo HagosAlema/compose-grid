@@ -212,10 +212,12 @@ Supported out of the box:
   scrolls one row or column that way and retries, which means a keyboard user
   can walk the whole dataset rather than stopping at the viewport edge.
 
-Testing note: `requestFocus()` from `compose-ui-test` doesn't grant focus in
-this project's setup, so the keyboard path is covered by unit tests over the
-scroll arithmetic ([`GridColumnRevealStepTest`](grid-core/src/test/kotlin/io/github/composegrid/core/GridColumnRevealStepTest.kt))
-plus manual verification with real key events on a device.
+Testing note for contributors: focus assertions need Compose in
+`InputMode.Keyboard`. Android starts in `InputMode.Touch`, where the focus target
+inside `Modifier.clickable` declines focus — `requestFocus()` doesn't throw, the
+node just never becomes focused. Use `setContentWithKeyboardInputMode` from
+`FocusTestSupport.kt` for anything focus-related; `FocusHarnessInvestigationTest`
+documents the details.
 
 ## Building locally
 

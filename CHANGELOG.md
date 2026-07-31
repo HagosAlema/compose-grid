@@ -85,9 +85,10 @@ demonstrated in `sample-app`.
 - `Material3ResizeHandle`'s chevrons overlap the sort indicator while active on
   a column that is both sortable and resizable. Setting
   `sortIndicatorPosition = Leading` avoids it.
-- `requestFocus()` from `compose-ui-test` doesn't grant focus in this setup, so
-  focus-dependent behaviour has no automated instrumented cover — see
-  `DEVELOPMENT_PLAN.md` §7.
+- Focus-dependent instrumented tests must switch Compose into
+  `InputMode.Keyboard` first (`setContentWithKeyboardInputMode`); in the default
+  touch mode a `clickable` declines focus and assertions fail silently. Affects
+  contributors writing tests, not consumers.
 
 [Unreleased]: https://github.com/HagosAlema/compose-grid/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/HagosAlema/compose-grid/releases/tag/v0.1.0

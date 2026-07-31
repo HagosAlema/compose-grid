@@ -219,14 +219,16 @@ attached, so we can sanity-check the API feel before locking it in.*
 
 Outside the v1 scope but worth tracking:
 
-- **`requestFocus()` from `compose-ui-test` doesn't grant focus here.** Verified
-  with a control test on a bare `Box(Modifier.clickable {})` outside the grid,
-  which fails the same way — so it isn't a grid bug, and it isn't the keyguard
-  either (dismissing it changed nothing). The practical cost is that anything
-  focus-dependent can't be covered by instrumented tests: keyboard navigation is
-  covered by unit tests over the scroll arithmetic plus manual device
-  verification. Worth revisiting, since it blocks automated regression cover for
-  the whole focus surface.
+- ~~`requestFocus()` from `compose-ui-test` doesn't grant focus here.~~
+  **Resolved.** The cause was Compose's input mode: Android starts in
+  `InputMode.Touch`, and the focus target inside `Modifier.clickable` declines
+  focus there. `setContentWithKeyboardInputMode` (in `FocusTestSupport.kt`)
+  switches to `InputMode.Keyboard` first, and the focus-dependent tests now run
+  normally. Two traps worth remembering: a bare `Modifier.focusable()` is *not*
+  input-mode gated, so a control test built on it falsely suggests the harness
+  works; and the input mode is window-global and leaks between tests, so any
+  assertion about touch-mode behaviour is order-dependent and shouldn't be
+  written.
 - **Resize handle touch target is 24dp wide**, under Material's 48dp minimum.
   Widening it would start swallowing header taps on narrow columns, so it needs
   a deliberate design decision rather than a bump.
