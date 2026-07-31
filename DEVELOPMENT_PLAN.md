@@ -238,8 +238,29 @@ Outside the v1 scope but worth tracking:
   `ColumnPin.End` demo, no visible selection UI driven by
   `GridState.selectedRowKeys`, and no demonstration of
   `SortIndicatorPosition.Leading`.
-- **Screenshot testing** (Paparazzi or Roborazzi) is listed in §4 but not set
-  up. Worth having before the API freezes, since theming is now a real surface.
+- **Screenshot testing** is listed in §4 but still not set up. Worth having
+  before the API freezes, since theming is now a real public surface with two
+  composable slots that no behavioural test covers.
+
+  Google's first-party **Compose Preview Screenshot Testing** plugin
+  (`com.android.compose.screenshot` 0.0.1-alpha15) was tried and doesn't work
+  here. It wires up correctly — the `screenshotTest` source set compiles and the
+  `update`/`validate` tasks exist — but preview discovery finds nothing:
+  *"test sources present … did not discover any tests to execute."* Ruled out
+  along the way: `private` versus public previews, top-level functions versus
+  previews wrapped in a class, and library versus application module (a
+  one-line probe preview in `sample-app` fails identically).
+
+  Most likely the same root cause as the Dokka problem in M7: AGP 9 compiles
+  Kotlin itself, so the Kotlin Gradle Plugin is never applied and tooling that
+  hooks into it finds nothing. Dokka needed explicit `sourceRoots` as a
+  workaround; preview discovery exposes no equivalent knob. The wiring was
+  reverted rather than left in place failing.
+
+  Next thing to try is **Roborazzi**, which captures from ordinary Robolectric
+  JVM tests via `captureRoboImage()` and so doesn't depend on preview scanning
+  at all. Expect to pin `@Config(sdk = …)` below 37, since Robolectric needs a
+  matching `android-all` jar.
 
 ---
 
