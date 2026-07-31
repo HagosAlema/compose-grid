@@ -8,7 +8,7 @@ Notable changes to ComposeGrid. Format loosely follows
 
 Nothing yet.
 
-## [0.1.0] — unreleased
+## [0.1.0] — 2026-08-01
 
 First release candidate. Everything in the v1 scope
 ([`DEVELOPMENT_PLAN.md`](./DEVELOPMENT_PLAN.md) §2) is implemented, tested, and

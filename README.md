@@ -42,8 +42,8 @@ nor Paging, so you can bring your own design system.
 
 ## Installation
 
-Not yet published to Maven Central; see [`RELEASING.md`](./RELEASING.md) for the
-remaining steps. Once released:
+Published to Maven Central. New releases can take a little while to appear in
+the index after publishing:
 
 ```kotlin
 dependencies {
