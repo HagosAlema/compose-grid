@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -17,6 +18,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
@@ -39,6 +41,7 @@ import io.github.composegrid.core.GridColumn
 import io.github.composegrid.core.GridColumnWidth
 import io.github.composegrid.core.GridLoadState
 import io.github.composegrid.core.SortDirection
+import io.github.composegrid.core.SortIndicatorPosition
 import io.github.composegrid.core.rememberGridState
 import io.github.composegrid.core.rememberSortedGridDataSource
 import io.github.composegrid.material3.GridDefaults
@@ -162,11 +165,21 @@ private fun employeeColumns(): List<GridColumn<Employee>> = listOf(
     ),
     GridColumn(
         id = "salary",
-        header = { Text("Salary") },
+        header = {
+            // Right-aligned, like the numbers below it. This is the case
+            // SortIndicatorPosition.Leading exists for — see the Paged tab.
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                Text("Salary")
+            }
+        },
         width = GridColumnWidth.Fixed(120.dp),
         sortable = true,
         comparator = compareBy { it.salary },
-        cell = { Text("$${it.salary}") },
+        cell = {
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                Text("$${it.salary}")
+            }
+        },
     ),
     GridColumn(
         id = "location",
@@ -201,8 +214,20 @@ private fun employeeColumns(): List<GridColumn<Employee>> = listOf(
         id = "phone",
         header = { Text("Phone") },
         width = GridColumnWidth.Range(min = 60.dp, max = 160.dp, initial = 160.dp),
-        pinned = ColumnPin.None,
         cell = { Text(it.phone) },
+    ),
+    // Pinned to the trailing edge: stays put during horizontal scroll, mirroring
+    // the pinned "Name" column at the start. Also resizable, so this exercises a
+    // pinned *and* resizable column — the two features have to share the header
+    // cell's trailing edge.
+    GridColumn(
+        id = "tenure",
+        header = { Text("Tenure") },
+        width = GridColumnWidth.Range(min = 70.dp, max = 140.dp, initial = 90.dp),
+        sortable = true,
+        comparator = compareBy { it.startDate },
+        pinned = ColumnPin.End,
+        cell = { Text(it.startDate.take(4)) },
     ),
 )
 
@@ -264,9 +289,13 @@ fun SampleAppRoot(darkTheme: Boolean, onDarkThemeChange: (Boolean) -> Unit) {
  * In-memory sorting: [rememberSortedGridDataSource] reorders rows from each
  * column's comparator.
  *
- * Also opts into [Material3ResizeHandle], so this tab shows the chevron
- * resize affordance (visible when hovered with a mouse, or while dragging)
- * while the Paged tab keeps the plain default line.
+ * Also shows two other things:
+ *  - Selection state hoisted out of the grid. [GridState.selectedRowKeys] is
+ *    plain observable state, so a toolbar above the grid can read it and clear
+ *    it without the grid knowing anything about that UI.
+ *  - [Material3ResizeHandle], the opt-in chevron resize affordance (visible on
+ *    mouse hover or while dragging). The Paged tab keeps the plain default line
+ *    for contrast.
  */
 @Composable
 fun EmployeeGridScreen() {
@@ -279,14 +308,45 @@ fun EmployeeGridScreen() {
         colors.toGridStyle(resizeHandle = { handleState -> Material3ResizeHandle(handleState) })
     }
 
-    DataGrid(
-        columns = columns,
-        dataSource = dataSource,
-        state = gridState,
-        modifier = Modifier.fillMaxSize(),
-        style = style,
-        rowKey = { it.id },
-    )
+    Column(modifier = Modifier.fillMaxSize()) {
+        SelectionSummary(
+            selectedCount = gridState.selectedRowKeys.size,
+            totalCount = employees.size,
+            onClear = { gridState.clearSelection() },
+        )
+        DataGrid(
+            columns = columns,
+            dataSource = dataSource,
+            state = gridState,
+            modifier = Modifier.weight(1f),
+            style = style,
+            rowKey = { it.id },
+        )
+    }
+}
+
+/** Reads [io.github.composegrid.core.GridState.selectedRowKeys] from outside the grid. */
+@Composable
+private fun SelectionSummary(selectedCount: Int, totalCount: Int, onClear: () -> Unit) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = if (selectedCount == 0) {
+                "Tap a row to select it"
+            } else {
+                "$selectedCount of $totalCount selected"
+            },
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.weight(1f),
+        )
+        if (selectedCount > 0) {
+            TextButton(onClick = onClear) { Text("Clear") }
+        }
+    }
 }
 
 /**
@@ -297,12 +357,20 @@ fun EmployeeGridScreen() {
  * client-side — only the loaded window is in memory — so instead of
  * [rememberSortedGridDataSource], the sort state rebuilds the `Pager` and the
  * (fake) backend returns rows already ordered.
+ *
+ * Uses [SortIndicatorPosition.Leading] to contrast with the In-memory tab's
+ * default: with the right-aligned Salary column, the arrow reads better on the
+ * side the numbers align to.
  */
 @Composable
 fun PagedEmployeeGridScreen() {
     val columns = remember { employeeColumns() }
     val gridState = rememberGridState()
     val allEmployees = remember { generateManyEmployees(200) }
+    val colors = GridDefaults.colors()
+    val style = remember(colors) {
+        colors.toGridStyle(sortIndicatorPosition = SortIndicatorPosition.Leading)
+    }
 
     val pager = remember(gridState.sortColumnId, gridState.sortDirection) {
         val ascending = columns.firstOrNull { it.id == gridState.sortColumnId }?.comparator
@@ -323,7 +391,7 @@ fun PagedEmployeeGridScreen() {
         dataSource = dataSource,
         state = gridState,
         modifier = Modifier.fillMaxSize(),
-        style = GridDefaults.style(),
+        style = style,
         rowKey = { it.id },
         placeholderCell = { loadState ->
             when (loadState) {
