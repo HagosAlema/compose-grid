@@ -79,28 +79,6 @@ behaviour — the resize handle's touch target, drag gesture, and system
 gesture-exclusion bookkeeping are not delegated, so a custom handle can't
 accidentally break back-swipe protection.
 
-## Key decisions
-
-**Name — `ComposeGrid`.** No Maven Central artifact matches `composegrid` and no
-GitHub project uses the name. `compose-table` was considered and rejected: it's
-taken twice on GitHub and sits in a crowded field alongside `ComposeDataTable`,
-`composable-table`, `compose-data-table`, and `Jetpack-Compose-Tables`. "Table"
-is the more accurate category word, but uniqueness beat accuracy — the ambiguity
-with Compose's *layout* grids is fixable with wording, a name collision isn't.
-Keeping "grid" also keeps the `DataGrid` composable name coherent with
-WPF/AG Grid/MUI convention.
-
-**groupId — `io.github.hagosalema`.** Reverse-DNS of `hagosalema.github.io`,
-mapping to the GitHub account the Sonatype namespace verifies against. The Kotlin
-packages stay `io.github.composegrid`; groupId and package name don't have to
-agree. Useful side effect: the coordinates don't encode the project name, so a
-future rename wouldn't drag them along.
-
-**Versioning — SemVer, first release `0.1.0`, not `1.0.0`.** `1.0.0` commits to
-the public surface, and that surface moved substantially late in development —
-`GridStyle`'s slots, the sorting helpers, and `GridColumn.comparator` are all
-new and unexercised by real consumers. Better to live on `0.x` through some real
-usage first.
 
 ## Tech stack
 

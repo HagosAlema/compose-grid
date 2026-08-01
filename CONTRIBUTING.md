@@ -88,7 +88,3 @@ recomposition throws those providers away each time. `GridStyle.Default` and
 
 Design rationale is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md); planned work
 is in [docs/ROADMAP.md](docs/ROADMAP.md).
-
-## Releasing
-
-Maintainers only — see [docs/RELEASING.md](docs/RELEASING.md).
