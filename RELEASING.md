@@ -122,9 +122,13 @@ export ORG_GRADLE_PROJECT_signingInMemoryKeyPassword='<key passphrase>'
 ```
 
 Any Gradle property can be supplied this way — the `ORG_GRADLE_PROJECT_` prefix
-plus the property name. If your keyring holds more than one secret key, also set
-`ORG_GRADLE_PROJECT_signingInMemoryKeyId` to the short key id so the right one is
-picked.
+plus the property name.
+
+Only set `signingInMemoryKeyId` if the keyring genuinely holds several secret
+keys, and never wire it to a GitHub secret that might not exist: an absent
+secret expands to an empty string rather than being omitted, Gradle sees the
+property as present-but-blank, and signing fails with *"The key ID must be in a
+valid form"*.
 
 Signing is skipped entirely when no key is configured (see the note in each
 module's `mavenPublishing` block), so `publishToMavenLocal` works without any of
