@@ -41,9 +41,13 @@ import org.robolectric.annotation.GraphicsMode
  * indicator or drops the selection tint.
  *
  * ```
- * ./gradlew :grid-material3:recordRoborazziDebug   # (re)record references
- * ./gradlew :grid-material3:verifyRoborazziDebug   # fail on any visual diff
+ * ./gradlew :grid-material3:testDebugUnitTest                    # verify
+ * ./gradlew :grid-material3:testDebugUnitTest -Proborazzi.record # re-record
  * ```
+ *
+ * Not the plugin's `recordRoborazzi*` tasks: Roborazzi's Gradle plugin needs
+ * AGP's legacy `TestedExtension` and isn't applied here, so the build sets the
+ * same system properties directly. See CONTRIBUTING.md.
  *
  * Runs on the JVM under Robolectric, so no device or emulator is needed and it
  * works in CI. `sdk = 35` is deliberate: Robolectric's newest `android-all`
