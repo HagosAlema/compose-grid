@@ -45,9 +45,41 @@ Maven Central requires signed artifacts.
 ```bash
 gpg --full-generate-key                 # RSA 4096, no expiry or a long one
 gpg --list-secret-keys --keyid-format=long
-gpg --keyserver keyserver.ubuntu.com --send-keys <LONG_KEY_ID>   # must be discoverable
 gpg --export-secret-keys --armor <LONG_KEY_ID>                   # value for CI
 ```
+
+**Publishing the public key, and actually checking it landed.** Central verifies
+your signatures by fetching the public key, so an unpublished key fails the
+release. `gpg --send-keys` prints nothing on success *and nothing on several
+kinds of failure*, so never treat silence as confirmation — always verify:
+
+```bash
+gpg --keyserver hkps://keyserver.ubuntu.com --send-keys <LONG_KEY_ID>
+curl -s "https://keyserver.ubuntu.com/pks/lookup?op=index&search=0x<FULL_FINGERPRINT>"
+```
+
+The lookup should return a key record. If it says `Not Found`, the upload didn't
+happen — `dirmngr` failing to reach the keyserver is the usual reason, and it is
+silent. The reliable fallback is the web form at
+https://keyserver.ubuntu.com, pasting the output of:
+
+```bash
+gpg --armor --export <LONG_KEY_ID>          # public key — safe to share
+```
+
+**A trap specific to `keys.openpgp.org`:** it will happily serve your key while
+stripping the user ID until you complete its email-verification step. A UID-less
+key is worse than useless for this — `gpg` refuses to import one at all
+("contains no user ID - skipped"), so a validator can't verify your signature
+even though the key appears to be published. Check what a *clean* keyring
+actually receives:
+
+```bash
+TMP=$(mktemp -d); gpg --homedir "$TMP" --recv-keys <LONG_KEY_ID>; gpg --homedir "$TMP" --list-keys; rm -rf "$TMP"
+```
+
+Your own keyring already holds the full key, so verifying against it proves
+nothing about what Central will see.
 
 That last command prints the ASCII-armored private key. Use it **verbatim**,
 including the `-----BEGIN PGP PRIVATE KEY BLOCK-----` / `-----END …-----` lines
