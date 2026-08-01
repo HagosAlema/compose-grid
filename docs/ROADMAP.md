@@ -25,11 +25,17 @@ Two things were needed to get there, both worth remembering:
   tooling hooking into it comes up empty. Dokka hit this too and had an escape
   hatch in explicit `sourceRoots`; preview discovery exposes none.
 
-### Resize handle touch target
+### ~~Resize handle touch target~~ — done
 
-24dp wide, under Material's 48dp minimum. Widening it naively starts swallowing
-header taps on narrow columns, so this needs a deliberate design decision rather
-than a bump.
+The grab area is now 48dp, Material's minimum, measured inward from the column
+boundary and capped at half the column so a narrow column keeps header surface
+that isn't resize surface. Taps fall through to the sort click either way, so
+widening cost nothing there.
+
+Fixing this surfaced a separate bug: the resize indicator was centred inside the
+grab area, so it rendered ~12dp *inside* the boundary it moves rather than on it.
+Measured off a screenshot — the column ended at 360dp, the line drew at 349dp.
+It now aligns to the trailing edge.
 
 ### Variable row height
 

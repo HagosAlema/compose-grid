@@ -6,6 +6,18 @@ Notable changes to ComposeGrid. Format loosely follows
 
 ## [Unreleased] — 0.2.0
 
+### Changed
+
+- The column resize grab area is now 48dp — Material's minimum touch target —
+  measured inward from the column boundary, capped at half the column so narrow
+  columns keep header surface that isn't resize surface. It was 24dp.
+
+### Fixed
+
+- The resize indicator rendered about 12dp inside the column boundary instead of
+  on it, because the visual was centred within the grab area. It now aligns to
+  the edge it moves.
+
 ### Added
 
 - Screenshot tests (Roborazzi) covering the grid's rendered appearance in light

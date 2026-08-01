@@ -52,6 +52,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.layout.Placeable
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
@@ -587,7 +588,7 @@ private fun BoxScope.ColumnResizeHandle(
         modifier = Modifier
             .align(Alignment.CenterEnd)
             .fillMaxHeight()
-            .width(ResizeHandleTouchWidth)
+            .resizeHandleTouchWidth()
             .onGloballyPositioned { coordinates ->
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                     val bounds = coordinates.boundsInWindow()
@@ -606,7 +607,10 @@ private fun BoxScope.ColumnResizeHandle(
                 state = dragState,
                 interactionSource = interactionSource,
             ),
-        contentAlignment = Alignment.Center,
+        // CenterEnd, not Center: the indicator marks the column boundary it
+        // moves. Centring it inside the grab area left it floating ~12dp inside
+        // the edge, pointing at nothing.
+        contentAlignment = Alignment.CenterEnd,
     ) {
         style.resizeHandle(
             ResizeHandleState(
@@ -650,12 +654,34 @@ private fun SystemGestureExclusionEffect(state: GridState) {
     }
 }
 
-private val ResizeHandleTouchWidth = 24.dp
+/**
+ * Material's minimum touch target. The grab area is only this wide *inward* from
+ * the column boundary — it can't extend past the cell — so it's the full 48dp
+ * only on columns wide enough to spare it; see [resizeHandleTouchWidth].
+ */
+private val ResizeHandleTouchWidth = 48.dp
 private val ResizeGutterWidth = 8.dp
 private val FocusRingWidth = 2.dp
 
 /** How much one "Increase/Decrease column width" accessibility action moves the edge. */
 private val ResizeAccessibilityStep = 24.dp
+
+/**
+ * Sizes the resize grab area to [ResizeHandleTouchWidth], but never more than
+ * half the column.
+ *
+ * A 48dp target on a 60dp column would leave almost no plain header, and while
+ * a tap still falls through to the sort click, every *drag* near that header
+ * would become a resize. Half the column is the compromise: comfortably
+ * grabbable on normal columns, still leaving something to aim at on narrow ones.
+ */
+private fun Modifier.resizeHandleTouchWidth(): Modifier = layout { measurable, constraints ->
+    val width = ResizeHandleTouchWidth.roundToPx()
+        .coerceAtMost(constraints.maxWidth / 2)
+        .coerceAtLeast(1)
+    val placeable = measurable.measure(constraints.copy(minWidth = width, maxWidth = width))
+    layout(placeable.width, placeable.height) { placeable.place(0, 0) }
+}
 
 /** Breathing room between a header label and its sort indicator. */
 private val SortIndicatorGap = 4.dp
