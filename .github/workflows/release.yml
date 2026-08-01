@@ -2,7 +2,7 @@ name: Release
 
 # Publishing to Maven Central is irreversible, so this never runs on a plain
 # push. It fires only on an explicit `v*` tag, or a manual dispatch — see
-# RELEASING.md for the full checklist, including the groupId decision that has
+# docs/RELEASING.md for the full checklist, including the groupId decision that has
 # to be settled before the first publish can succeed.
 on:
   push:

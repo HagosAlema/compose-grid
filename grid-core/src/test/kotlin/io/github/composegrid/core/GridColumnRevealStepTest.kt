@@ -14,7 +14,7 @@ import org.junit.Test
  * Lives in unit tests rather than instrumented ones because the arithmetic is
  * pure — and because `requestFocus()` doesn't grant focus under compose-ui-test
  * in this project, so the end-to-end path is verified by hand on a device
- * instead. See DEVELOPMENT_PLAN.md §7.
+ * instead. See CONTRIBUTING.md.
  */
 class GridColumnRevealStepTest {
 

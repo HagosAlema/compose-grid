@@ -83,11 +83,10 @@ import kotlin.math.roundToInt
 /**
  * A virtualized, resizable, sortable data grid for Jetpack Compose.
  *
- * ## Status: M6 milestone
  * Rows and columns virtualize jointly on a custom
  * [androidx.compose.foundation.lazy.layout.LazyLayout] engine: only cells
  * whose row *and* column both intersect the viewport are composed, measured,
- * and placed — see `DEVELOPMENT_PLAN.md` §3.2/M2. The header shares the same
+ * and placed — see `docs/ARCHITECTURE.md`. The header shares the same
  * [GridColumnLayoutInfo] and horizontal scroll position as a second, single-row
  * `LazyLayout`, so header and body columns always stay pixel-aligned.
  *

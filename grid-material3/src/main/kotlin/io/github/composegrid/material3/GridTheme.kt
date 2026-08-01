@@ -31,11 +31,11 @@ import io.github.composegrid.core.SortIndicatorPosition
  * [toGridStyle], or skip straight to a ready-made [GridStyle] via
  * [GridDefaults.style].
  *
- * Status: **M6.** Column definitions and cell composables in `grid-core`
- * are already fully custom-renderable; this module's job (per
- * `DEVELOPMENT_PLAN.md` M6) is to layer opinionated, overridable Material3
- * defaults on top — header background, selected-row tint, sort-icon color,
- * divider color — so most consumers never need to touch `grid-core` directly.
+ * Column definitions and cell composables in `grid-core` are already fully
+ * custom-renderable; this module layers opinionated, overridable Material3
+ * defaults on top — header background, selected-row tint, sort-indicator
+ * color, divider color — so most consumers never need to touch `grid-core`
+ * directly.
  */
 data class GridColors(
     val headerBackground: Color,

@@ -11,7 +11,7 @@ plugins {
 
 // Single source of truth for the published coordinates. Every publishable
 // module inherits these rather than repeating them, so cutting a release is a
-// one-line change here — see RELEASING.md.
+// one-line change here — see docs/RELEASING.md.
 allprojects {
     // io.github.hagosalema is the reverse-DNS of hagosalema.github.io and maps
     // to the GitHub account the Sonatype namespace is verified against. The

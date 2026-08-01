@@ -65,7 +65,7 @@ dependencies {
 // version come from the root build.gradle.kts so all artifacts stay in step.
 //
 // Signing and Sonatype credentials are read from the environment / Gradle
-// properties and are never checked in — see RELEASING.md.
+// properties and are never checked in — see docs/RELEASING.md.
 mavenPublishing {
     // CENTRAL_PORTAL explicitly: with this plugin version a bare
     // publishToMavenCentral() targets the *legacy* OSSRH/Nexus service, which
@@ -77,7 +77,7 @@ mavenPublishing {
     // unsigned artifacts and release.yml supplies the key, so real releases are
     // always signed — but requiring one unconditionally would make
     // `publishToMavenLocal` impossible to run without a GPG key, which is the
-    // cheapest way to inspect what a release would contain. See RELEASING.md.
+    // cheapest way to inspect what a release would contain. See docs/RELEASING.md.
     if (providers.gradleProperty("signingInMemoryKey").isPresent ||
         providers.gradleProperty("signing.keyId").isPresent
     ) {

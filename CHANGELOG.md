@@ -8,14 +8,14 @@ Notable changes to ComposeGrid. Format loosely follows
 
 Nothing yet.
 
-Tracked for this line (see `DEVELOPMENT_PLAN.md` §7): screenshot testing via
+Tracked for this line (see [docs/ROADMAP.md](docs/ROADMAP.md)): screenshot testing via
 Roborazzi, a decision on the 24dp resize touch target versus Material's 48dp
 minimum, and variable per-row height.
 
 ## [0.1.0] — 2026-08-01
 
 First release candidate. Everything in the v1 scope
-([`DEVELOPMENT_PLAN.md`](./DEVELOPMENT_PLAN.md) §2) is implemented, tested, and
+is implemented, tested, and
 demonstrated in `sample-app`.
 
 ### Added
