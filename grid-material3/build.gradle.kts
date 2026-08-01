@@ -24,6 +24,14 @@ android {
     buildFeatures {
         compose = true
     }
+
+    // Robolectric renders real resources off-device; without this it sees none
+    // and Compose content fails to inflate.
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+        }
+    }
 }
 
 dependencies {
@@ -33,6 +41,13 @@ dependencies {
     implementation(libs.compose.material3)
 
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.roborazzi)
+    testImplementation(libs.roborazzi.compose)
+    testImplementation(libs.roborazzi.rule)
+    testImplementation(platform(libs.compose.bom))
+    testImplementation(libs.compose.ui.test.junit4)
+    testImplementation(libs.androidx.test.ext.junit)
 }
 
 // Published to Maven Central via the Sonatype Central Portal. groupId and
@@ -101,4 +116,20 @@ dokka {
             remoteLineSuffix.set("#L")
         }
     }
+}
+
+// Roborazzi's Gradle plugin can't be used here: it requires AGP's legacy
+// `TestedExtension`, which AGP 9 removed. The plugin only registers tasks that
+// set system properties, so those are wired directly instead.
+//
+//   ./gradlew :grid-material3:testDebugUnitTest -Proborazzi.record   # (re)record
+//   ./gradlew :grid-material3:testDebugUnitTest                      # verify
+//
+// Verification is the default so an ordinary test run — including CI — fails on
+// a visual regression rather than silently rewriting the references it is meant
+// to be checking against.
+tasks.withType<Test>().configureEach {
+    val recording = providers.gradleProperty("roborazzi.record").isPresent
+    systemProperty("roborazzi.test.record", recording.toString())
+    systemProperty("roborazzi.test.verify", (!recording).toString())
 }

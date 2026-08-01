@@ -5,30 +5,25 @@ Known gaps and planned work. Shipped changes are in
 
 ## Planned
 
-### Screenshot testing
+### ~~Screenshot testing~~ — done
 
-Theming is a real public surface — colours, two composable slots, cell padding —
-and no behavioural test covers how any of it renders. Worth having before the
-API stabilises.
+Roborazzi now pins the grid's rendered appearance across light/dark, sort states,
+selection, and the opt-in chevron handle. Runs on the JVM under Robolectric and
+is verified by an ordinary `./gradlew test`. See
+[CONTRIBUTING.md](../CONTRIBUTING.md#screenshot-tests).
 
-Google's first-party **Compose Preview Screenshot Testing** plugin
-(`com.android.compose.screenshot` 0.0.1-alpha15) was tried and does not work
-here. It wires up correctly — the `screenshotTest` source set compiles and the
-`update`/`validate` tasks register — but preview discovery finds nothing:
-*"test sources present … did not discover any tests to execute."*
+Two things were needed to get there, both worth remembering:
 
-Ruled out: `private` versus public previews, top-level functions versus previews
-wrapped in a class, and library versus application module (a one-line probe
-preview in `sample-app` fails identically). The likely cause is the same one that
-broke Dokka: AGP 9 compiles Kotlin itself, so the Kotlin Gradle Plugin is never
-applied and tooling hooking into it finds nothing. Dokka had an escape hatch in
-explicit `sourceRoots`; preview discovery exposes none. The wiring was reverted
-rather than left failing.
-
-**Next to try: Roborazzi**, which captures from ordinary Robolectric JVM tests
-via `captureRoboImage()` and doesn't depend on preview scanning. Expect to pin
-`@Config(sdk = …)` below 37, since Robolectric needs a matching `android-all`
-jar.
+- **Roborazzi's Gradle plugin doesn't work under AGP 9** — it requires the legacy
+  `TestedExtension`, which AGP 9 removed. The plugin only registers tasks that
+  set system properties, so those are wired by hand and everything else works.
+- **Google's first-party Compose Preview Screenshot Testing plugin was tried
+  first and abandoned.** It wires up and compiles, but preview discovery finds
+  nothing. Ruled out: private vs public previews, top-level vs class-wrapped,
+  library vs application module. Almost certainly the same root cause — AGP 9
+  compiles Kotlin itself, so the Kotlin Gradle Plugin is never applied and
+  tooling hooking into it comes up empty. Dokka hit this too and had an escape
+  hatch in explicit `sourceRoots`; preview discovery exposes none.
 
 ### Resize handle touch target
 

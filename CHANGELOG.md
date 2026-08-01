@@ -6,11 +6,16 @@ Notable changes to ComposeGrid. Format loosely follows
 
 ## [Unreleased] — 0.2.0
 
-Nothing yet.
+### Added
 
-Tracked for this line (see [docs/ROADMAP.md](docs/ROADMAP.md)): screenshot testing via
-Roborazzi, a decision on the 24dp resize touch target versus Material's 48dp
-minimum, and variable per-row height.
+- Screenshot tests (Roborazzi) covering the grid's rendered appearance in light
+  and dark themes, sorted states, selection across pinned and scrollable
+  regions, and the opt-in chevron resize handle. Verified as part of the normal
+  test run.
+
+Still tracked for this line (see [docs/ROADMAP.md](docs/ROADMAP.md)): a decision
+on the 24dp resize touch target versus Material's 48dp minimum, and variable
+per-row height.
 
 ## [0.1.0] — 2026-08-01
 

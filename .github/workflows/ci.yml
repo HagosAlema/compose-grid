@@ -27,8 +27,19 @@ jobs:
       - name: Lint
         run: ./gradlew lint
 
+      # Also verifies the Roborazzi screenshots — see CONTRIBUTING.md.
       - name: Unit tests
         run: ./gradlew test
+
+      # A screenshot failure is unreadable without the images. Roborazzi writes
+      # actual/expected/diff triplets, which are the whole diagnosis.
+      - name: Upload screenshot diffs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshot-diffs
+          path: "**/build/outputs/roborazzi/**"
+          if-no-files-found: ignore
 
       - name: Assemble
         run: ./gradlew assemble

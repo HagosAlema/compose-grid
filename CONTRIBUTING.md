@@ -19,6 +19,32 @@
 CI runs lint, unit tests, assemble, the instrumented tests, and a docs build on
 every PR.
 
+## Screenshot tests
+
+The grid's rendered appearance is pinned by Roborazzi screenshots in
+`grid-material3`. They run on the JVM under Robolectric — no device or emulator
+— and are verified as part of an ordinary `./gradlew test`, so a visual
+regression fails the build rather than slipping through.
+
+```bash
+./gradlew :grid-material3:testDebugUnitTest                    # verify (the default)
+./gradlew :grid-material3:testDebugUnitTest -Proborazzi.record # re-record references
+```
+
+References live in `grid-material3/src/test/screenshots/` and are committed.
+**Only re-record when you intended the visual change**, and eyeball the diff in
+the commit — re-recording is how a real regression gets rubber-stamped into the
+baseline. On failure, Roborazzi writes actual/expected/diff triplets to
+`build/outputs/roborazzi/`; CI uploads them as a `screenshot-diffs` artifact.
+
+Two constraints baked into the setup:
+
+- Tests are pinned to `@Config(sdk = [35])`. Robolectric's newest `android-all`
+  image is Android 15, while the project compiles against 37.
+- Roborazzi's Gradle plugin is **not** applied. It requires AGP's legacy
+  `TestedExtension`, which AGP 9 removed. The plugin only registers tasks that
+  set system properties, so `grid-material3/build.gradle.kts` sets them directly.
+
 ## Benchmarks
 
 ```bash
