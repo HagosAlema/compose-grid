@@ -160,6 +160,24 @@ this — handy for inspecting what a release would contain.
    section.
 9. Bump to the next `-SNAPSHOT` on `master`.
 
+## Troubleshooting
+
+**`Cannot get stagingProfiles for account …: (402)` from
+`createStagingRepository`.** The build is talking to the *legacy* OSSRH/Nexus
+service instead of the Central Portal, and a Portal account has no OSSRH staging
+profiles. With this plugin version a bare `publishToMavenCentral()` defaults to
+`SonatypeHost.DEFAULT` — `https://oss.sonatype.org`. Each module passes
+`SonatypeHost.CENTRAL_PORTAL` explicitly for exactly this reason; don't drop it.
+A telltale sign is that the Portal shows **no deployment at all** afterwards,
+because nothing ever reached it.
+
+**Signing produced no `.asc` files.** The `Verify signing works` step in
+`release.yml` catches this before anything is uploaded. Usually
+`SIGNING_IN_MEMORY_KEY` isn't the raw armored block — see step 3.
+
+**`401`/`403` on upload.** `MAVEN_CENTRAL_USERNAME`/`PASSWORD` must be the
+Portal *user token* pair, not the account login.
+
 ## Before you publish, read this
 
 **Publishing to Maven Central is irreversible.** Released coordinates can never

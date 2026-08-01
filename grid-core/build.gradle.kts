@@ -1,3 +1,5 @@
+import com.vanniktech.maven.publish.SonatypeHost
+
 plugins {
     alias(libs.plugins.android.library)
     // Kotlin compilation is built into AGP 9+; no kotlin-android plugin here.
@@ -65,7 +67,11 @@ dependencies {
 // Signing and Sonatype credentials are read from the environment / Gradle
 // properties and are never checked in — see RELEASING.md.
 mavenPublishing {
-    publishToMavenCentral()
+    // CENTRAL_PORTAL explicitly: with this plugin version a bare
+    // publishToMavenCentral() targets the *legacy* OSSRH/Nexus service, which
+    // fails for a Central Portal account with an opaque
+    // "Cannot get stagingProfiles ... (402)" from createStagingRepository.
+    publishToMavenCentral(SonatypeHost.CENTRAL_PORTAL)
 
     // Sign only when a key is actually configured. Maven Central rejects
     // unsigned artifacts and release.yml supplies the key, so real releases are
