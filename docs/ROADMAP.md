@@ -37,12 +37,22 @@ grab area, so it rendered ~12dp *inside* the boundary it moves rather than on it
 Measured off a screenshot — the column ended at 360dp, the line drew at 349dp.
 It now aligns to the trailing edge.
 
-### Variable row height
+### ~~Variable row height~~ — done
 
-Rows share a uniform height today. Supporting per-row heights means replacing
-`visibleRowRange`'s O(1) arithmetic with something that tracks cumulative
-offsets, and deciding how that interacts with the placeholder path for
-not-yet-loaded paged rows.
+`DataGrid` takes an optional `rowHeightAt: (index: Int) -> Dp`. Leave it null and
+nothing changes: the uniform path allocates nothing and resolves the visible
+range in constant time. Supply it and `GridRowLayoutInfo` precomputes cumulative
+offsets, giving O(1) lookups and an O(log n) visible-range search for one float
+per row.
+
+The height function takes an *index*, not a row. That's what makes it work with
+paged sources: a height derived from row data couldn't be known before the row
+loaded, and the grid would have nothing to size the scroll extent with.
+
+Not supported, and out of scope: rows that size themselves to their content.
+That can't be known without measuring every row, which is what `LazyColumn` does
+with estimated extents and progressive correction — and the scroll-position jumps
+that come with it.
 
 ## Deferred past v1 by design
 

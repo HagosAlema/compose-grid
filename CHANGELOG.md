@@ -4,7 +4,14 @@ Notable changes to ComposeGrid. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [SemVer](https://semver.org/). While on `0.x`, minor bumps may break API.
 
-## [Unreleased] — 0.2.0
+## [Unreleased]
+
+Nothing yet.
+
+## [0.2.0] — 2026-08-01
+
+Rounds out the three gaps left open by 0.1.0. No breaking changes: everything
+here is additive or a fix, and code written against 0.1.0 compiles unchanged.
 
 ### Changed
 
@@ -20,14 +27,16 @@ Notable changes to ComposeGrid. Format loosely follows
 
 ### Added
 
+- `DataGrid(rowHeightAt = ...)` for per-row heights, replacing the uniform-only
+  restriction. Omit it and behaviour is unchanged: the uniform path stays
+  allocation-free and constant-time, while per-row heights cost one float per row
+  and an O(log n) visible-range search. The function takes a row *index*, so it
+  works with paged sources where the row hasn't loaded yet. Content-sized rows
+  remain unsupported.
 - Screenshot tests (Roborazzi) covering the grid's rendered appearance in light
   and dark themes, sorted states, selection across pinned and scrollable
   regions, and the opt-in chevron resize handle. Verified as part of the normal
   test run.
-
-Still tracked for this line (see [docs/ROADMAP.md](docs/ROADMAP.md)): a decision
-on the 24dp resize touch target versus Material's 48dp minimum, and variable
-per-row height.
 
 ## [0.1.0] — 2026-08-01
 
@@ -111,5 +120,6 @@ demonstrated in `sample-app`.
   touch mode a `clickable` declines focus and assertions fail silently. Affects
   contributors writing tests, not consumers.
 
-[Unreleased]: https://github.com/HagosAlema/compose-grid/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/HagosAlema/compose-grid/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/HagosAlema/compose-grid/releases/tag/v0.2.0
 [0.1.0]: https://github.com/HagosAlema/compose-grid/releases/tag/v0.1.0

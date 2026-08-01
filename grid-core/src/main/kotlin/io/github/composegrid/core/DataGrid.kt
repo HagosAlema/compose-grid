@@ -77,8 +77,6 @@ import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import kotlin.math.ceil
-import kotlin.math.floor
 import kotlin.math.roundToInt
 
 /**
@@ -98,9 +96,6 @@ import kotlin.math.roundToInt
  * focus ring plus arrow-key navigation that scrolls off-screen cells into view
  * — see [gridArrowKeyNavigation].
  *
- * Known current limitations:
- *  - Rows share a single uniform [rowHeight]; variable per-row height isn't
- *    part of the v1 feature set.
  *
  * @param columns Column definitions, in display order.
  * @param dataSource Row data. Use [asGridDataSource] to wrap a plain `List<T>`.
@@ -109,7 +104,13 @@ import kotlin.math.roundToInt
  * @param style Visual styling (colors, sort indicator). Defaults to
  *   [GridStyle.Default]; `grid-material3`'s `GridDefaults.style()` builds one
  *   from Material3 theme tokens instead.
- * @param rowHeight Uniform height applied to every row and to the header.
+ * @param rowHeight Height applied to every row, and always to the header. Used
+ *   for all rows unless [rowHeightAt] is supplied.
+ * @param rowHeightAt Per-row height, overriding [rowHeight] for the body. Called
+ *   for *every* row index — including rows a paged source hasn't loaded yet — so
+ *   it must derive height from the index alone. Leave `null` for uniform rows:
+ *   that path allocates nothing and resolves the visible range in constant time,
+ *   whereas per-row heights cost one float per row and a binary search.
  * @param onSortChange Invoked when the user changes sort via a header click.
  * @param rowKey Stable key for a row item, used for selection tracking and
  *   cell keys. Defaults to [Any.hashCode], which is a reasonable fallback but
@@ -123,6 +124,7 @@ fun <T> DataGrid(
     modifier: Modifier = Modifier,
     style: GridStyle = GridStyle.Default,
     rowHeight: Dp = 48.dp,
+    rowHeightAt: ((index: Int) -> Dp)? = null,
     onSortChange: (column: GridColumn<T>, direction: SortDirection) -> Unit = { _, _ -> },
     rowKey: (T) -> Any = { it.hashCode() },
     placeholderCell: @Composable (loadState: GridLoadState) -> Unit = {},
@@ -141,6 +143,19 @@ fun <T> DataGrid(
     // the physical screen edge, rather than exactly flush with it. Only
     // reserved when a resize handle could actually land there.
     val trailingGutter = if (hasResizableColumn) Modifier.padding(end = ResizeGutterWidth) else Modifier
+
+    // Built here rather than inside the measure policies: the variable form is
+    // O(rows) to construct, and doing that on every measure pass would undo the
+    // point of virtualizing. Rebuilt only when the row count or the height
+    // function changes.
+    val rowCount = dataSource.itemCount.coerceAtLeast(0)
+    val rowLayout = remember(rowCount, rowHeight, rowHeightAt) {
+        if (rowHeightAt == null) {
+            GridRowLayoutInfo.uniform(rowCount, rowHeight)
+        } else {
+            GridRowLayoutInfo.variable(rowCount, rowHeightAt)
+        }
+    }
 
     Column(
         modifier = modifier
@@ -190,6 +205,7 @@ fun <T> DataGrid(
                     dataSource = dataSource,
                     state = state,
                     rowHeight = rowHeight,
+                    rowLayout = rowLayout,
                     style = style,
                     globalColumnIndex = globalColumnIndex,
                     totalColumnCount = totalColumnCount,
@@ -204,6 +220,7 @@ fun <T> DataGrid(
                 dataSource = dataSource,
                 state = state,
                 rowHeight = rowHeight,
+                rowLayout = rowLayout,
                 style = style,
                 globalColumnIndex = globalColumnIndex,
                 totalColumnCount = totalColumnCount,
@@ -218,6 +235,7 @@ fun <T> DataGrid(
                     dataSource = dataSource,
                     state = state,
                     rowHeight = rowHeight,
+                    rowLayout = rowLayout,
                     style = style,
                     globalColumnIndex = globalColumnIndex,
                     totalColumnCount = totalColumnCount,
@@ -327,6 +345,7 @@ private fun <T> GridBody(
     dataSource: GridDataSource<T>,
     state: GridState,
     rowHeight: Dp,
+    rowLayout: GridRowLayoutInfo,
     style: GridStyle,
     globalColumnIndex: Map<String, Int>,
     totalColumnCount: Int,
@@ -365,7 +384,7 @@ private fun <T> GridBody(
                 )
                 scrollBy { x, y -> state.scrollBy(Offset(x, y)) != Offset.Zero }
             },
-        measurePolicy = bodyMeasurePolicy(columns, dataSource, state, rowHeight),
+        measurePolicy = bodyMeasurePolicy(columns, state, rowLayout),
     )
 }
 
@@ -412,6 +431,7 @@ private fun <T> GridPinnedBody(
     dataSource: GridDataSource<T>,
     state: GridState,
     rowHeight: Dp,
+    rowLayout: GridRowLayoutInfo,
     style: GridStyle,
     globalColumnIndex: Map<String, Int>,
     totalColumnCount: Int,
@@ -431,7 +451,7 @@ private fun <T> GridPinnedBody(
             .then(state.bodyRemeasurementModifiers.getValue(region))
             .scrollable2D(state.scrollableState)
             .semantics { collectionInfo = CollectionInfo(dataSource.itemCount, totalColumnCount) },
-        measurePolicy = pinnedBodyMeasurePolicy(columns, dataSource, state, rowHeight),
+        measurePolicy = pinnedBodyMeasurePolicy(columns, state, rowLayout),
     )
 }
 
@@ -513,10 +533,12 @@ private class GridHeaderItemProvider<T>(
                     .fillMaxSize()
                     .padding(
                         start = style.cellPadding,
-                        // Keep header content clear of the resize handle's
-                        // footprint, so a long label — or the sort indicator —
-                        // can never slide underneath it.
-                        end = if (rangeWidth != null) ResizeHandleTouchWidth else style.cellPadding,
+                        // Clear of the handle's *drawn* affordance, not its
+                        // touch target. The grab area is invisible, so a label
+                        // sitting under it reads fine; reserving all 48dp cost a
+                        // narrow column nearly half its label width and wrapped
+                        // headers that used to fit.
+                        end = if (rangeWidth != null) ResizeHandleContentInset else style.cellPadding,
                     ),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -660,6 +682,13 @@ private fun SystemGestureExclusionEffect(state: GridState) {
  * only on columns wide enough to spare it; see [resizeHandleTouchWidth].
  */
 private val ResizeHandleTouchWidth = 48.dp
+
+/**
+ * How much header content keeps clear of the trailing edge on a resizable
+ * column — enough for the widest affordance a handle actually paints (the
+ * Material3 chevrons), rather than the full invisible grab area.
+ */
+private val ResizeHandleContentInset = 20.dp
 private val ResizeGutterWidth = 8.dp
 private val FocusRingWidth = 2.dp
 
@@ -839,17 +868,12 @@ private fun <T> headerMeasurePolicy(
 
 private fun <T> bodyMeasurePolicy(
     columns: List<GridColumn<T>>,
-    dataSource: GridDataSource<T>,
     state: GridState,
-    rowHeight: Dp,
+    rowLayout: GridRowLayoutInfo,
 ): LazyLayoutMeasurePolicy = LazyLayoutMeasurePolicy { constraints ->
     val columnCount = columns.size
-    val rowCount = dataSource.itemCount.coerceAtLeast(0)
     val viewportWidth = constraints.maxWidth.toDp()
-    val viewportWidthPx = constraints.maxWidth.toFloat()
-    val viewportHeightPx = constraints.maxHeight.toFloat()
-    val rowHeightPx = rowHeight.toPx()
-    val rowHeightPxInt = rowHeight.roundToPx()
+    val viewportHeight = constraints.maxHeight.toDp()
 
     val columnLayout = GridColumnLayoutInfo.resolve(
         columns = columns,
@@ -862,11 +886,10 @@ private fun <T> bodyMeasurePolicy(
     state.scrollableColumnLayout = columnLayout
     state.scrollableViewportWidth = viewportWidth
 
-    val totalHeightPx = rowCount * rowHeightPx
     state.updateScrollBounds(
         Offset(
-            x = (columnLayout.totalWidth.toPx() - viewportWidthPx).coerceAtLeast(0f),
-            y = (totalHeightPx - viewportHeightPx).coerceAtLeast(0f),
+            x = (columnLayout.totalWidth - viewportWidth).toPx().coerceAtLeast(0f),
+            y = (rowLayout.totalHeight - viewportHeight).toPx().coerceAtLeast(0f),
         ),
     )
 
@@ -878,17 +901,18 @@ private fun <T> bodyMeasurePolicy(
     } else {
         columnLayout.visibleColumnRange(scrollX.toDp(), viewportWidth)
     }
-    val rowRange = visibleRowRange(scrollY, viewportHeightPx, rowHeightPx, rowCount)
+    val rowRange = rowLayout.visibleRowRange(scrollY.toDp(), viewportHeight)
 
     val placedCells = mutableListOf<PlacedCell>()
     for (row in rowRange) {
-        val y = (row * rowHeightPx - scrollY).roundToInt()
+        val y = (rowLayout.offset(row).toPx() - scrollY).roundToInt()
+        val rowHeightPx = rowLayout.height(row).roundToPx()
         for (col in colRange) {
             val flatIndex = row * columnCount + col
             val x = (columnLayout.offset(col).toPx() - scrollX).roundToInt()
             val cellConstraints = Constraints.fixed(
                 width = columnLayout.width(col).roundToPx(),
-                height = rowHeightPxInt,
+                height = rowHeightPx,
             )
             compose(flatIndex).forEach { measurable ->
                 placedCells += PlacedCell(x, y, measurable.measure(cellConstraints))
@@ -942,15 +966,11 @@ private fun <T> pinnedHeaderMeasurePolicy(
 /** Like [bodyMeasurePolicy] but for a pinned (frozen) region — see [pinnedHeaderMeasurePolicy]. */
 private fun <T> pinnedBodyMeasurePolicy(
     columns: List<GridColumn<T>>,
-    dataSource: GridDataSource<T>,
     state: GridState,
-    rowHeight: Dp,
+    rowLayout: GridRowLayoutInfo,
 ): LazyLayoutMeasurePolicy = LazyLayoutMeasurePolicy { constraints ->
     val columnCount = columns.size
-    val rowCount = dataSource.itemCount.coerceAtLeast(0)
-    val viewportHeightPx = constraints.maxHeight.toFloat()
-    val rowHeightPx = rowHeight.toPx()
-    val rowHeightPxInt = rowHeight.roundToPx()
+    val viewportHeight = constraints.maxHeight.toDp()
 
     val columnLayout = GridColumnLayoutInfo.resolve(
         columns = columns,
@@ -959,17 +979,18 @@ private fun <T> pinnedBodyMeasurePolicy(
     )
 
     val scrollY = state.scrollOffset.y
-    val rowRange = visibleRowRange(scrollY, viewportHeightPx, rowHeightPx, rowCount)
+    val rowRange = rowLayout.visibleRowRange(scrollY.toDp(), viewportHeight)
 
     val placedCells = mutableListOf<PlacedCell>()
     for (row in rowRange) {
-        val y = (row * rowHeightPx - scrollY).roundToInt()
+        val y = (rowLayout.offset(row).toPx() - scrollY).roundToInt()
+        val rowHeightPx = rowLayout.height(row).roundToPx()
         for (col in columns.indices) {
             val flatIndex = row * columnCount + col
             val x = columnLayout.offset(col).roundToPx()
             val cellConstraints = Constraints.fixed(
                 width = columnLayout.width(col).roundToPx(),
-                height = rowHeightPxInt,
+                height = rowHeightPx,
             )
             compose(flatIndex).forEach { measurable ->
                 placedCells += PlacedCell(x, y, measurable.measure(cellConstraints))
@@ -982,20 +1003,3 @@ private fun <T> pinnedBodyMeasurePolicy(
     }
 }
 
-/**
- * Visible row indices for uniform-height rows: the half-open-interval
- * counterpart of [GridColumnLayoutInfo.visibleColumnRange], specialized to
- * O(1) math since every row is the same height.
- */
-private fun visibleRowRange(
-    scrollY: Float,
-    viewportHeight: Float,
-    rowHeightPx: Float,
-    rowCount: Int,
-): IntRange {
-    if (rowCount == 0 || rowHeightPx <= 0f || viewportHeight <= 0f) return IntRange.EMPTY
-    val viewEnd = scrollY + viewportHeight
-    val first = floor(scrollY / rowHeightPx).toInt().coerceIn(0, rowCount - 1)
-    val last = (ceil(viewEnd / rowHeightPx).toInt() - 1).coerceIn(0, rowCount - 1)
-    return if (first > last) IntRange.EMPTY else first..last
-}

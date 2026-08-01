@@ -11,11 +11,11 @@ A performant, virtualized data table for Jetpack Compose.
 
 ```kotlin
 dependencies {
-    implementation("io.github.hagosalema:grid-core:0.1.0")
+    implementation("io.github.hagosalema:grid-core:0.2.0")
 
     // optional
-    implementation("io.github.hagosalema:grid-material3:0.1.0") // Material3 defaults
-    implementation("io.github.hagosalema:grid-paging:0.1.0")    // Paging 3 support
+    implementation("io.github.hagosalema:grid-material3:0.2.0") // Material3 defaults
+    implementation("io.github.hagosalema:grid-paging:0.2.0")    // Paging 3 support
 }
 ```
 
@@ -104,6 +104,20 @@ DataGrid(
     onSortChange = { column, direction -> viewModel.reload(column.id, direction) },
 )
 ```
+
+**Row height.** Uniform by default. Pass `rowHeightAt` for per-row heights:
+
+```kotlin
+DataGrid(
+    columns = columns,
+    dataSource = dataSource,
+    rowHeightAt = { index -> if (index in expanded) 96.dp else 48.dp },
+)
+```
+
+It receives an index rather than a row, so it works with paged sources where the
+row may not have loaded yet. Rows that size themselves to their content aren't
+supported — that can't be known without measuring every row.
 
 **Selection.** `GridState` exposes `selectedRowKeys`, `toggleSelection(key)`, and
 `clearSelection()`. Tapping a cell toggles its row. Hoist the state to drive your

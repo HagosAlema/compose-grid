@@ -55,8 +55,11 @@ Two consequences worth knowing:
   remeasure when state read during measurement changes. `GridState` captures a
   `Remeasurement` per region and calls `forceRemeasure()` on every scroll delta,
   mirroring what Compose's own `LazyListState` does.
-- Rows share a uniform height, which lets `visibleRowRange` be O(1) arithmetic
-  rather than a scan. Variable row height would need a different strategy.
+- Row geometry lives in `GridRowLayoutInfo`, which has two representations. The
+  uniform one stores a single height and is O(1) and allocation-free at any row
+  count; the variable one precomputes cumulative offsets, costing one float per
+  row for an O(log n) binary search. Callers only pay for per-row heights if they
+  ask for them.
 
 ## Sorting
 

@@ -110,6 +110,7 @@ class GridScreenshotTest {
         selectedIds: List<Int> = emptyList(),
         indicatorPosition: SortIndicatorPosition = SortIndicatorPosition.Trailing,
         chevronHandle: Boolean = false,
+        rowHeightAt: ((Int) -> androidx.compose.ui.unit.Dp)? = null,
     ) {
         MaterialTheme(colorScheme = if (darkTheme) darkColorScheme() else lightColorScheme()) {
             Surface {
@@ -141,6 +142,7 @@ class GridScreenshotTest {
                     state = state,
                     modifier = Modifier.size(400.dp, 240.dp),
                     style = style,
+                    rowHeightAt = rowHeightAt,
                     rowKey = { it.id },
                 )
             }
@@ -193,5 +195,15 @@ class GridScreenshotTest {
     @Test
     fun chevronHandleAtRest() = capture("grid_chevron_handle_at_rest") {
         Fixture(chevronHandle = true)
+    }
+
+    /**
+     * Per-row heights. Alternating tall/short makes both an overlap and a gap
+     * between rows obvious at a glance, which is exactly what a numeric test
+     * can confirm but not really show.
+     */
+    @Test
+    fun variableRowHeights() = capture("grid_variable_row_heights") {
+        Fixture(rowHeightAt = { index -> if (index % 2 == 0) 40.dp else 72.dp })
     }
 }
