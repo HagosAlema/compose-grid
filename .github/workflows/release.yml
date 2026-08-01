@@ -35,6 +35,27 @@ jobs:
       - name: Assemble
         run: ./gradlew assemble
 
+      # Fail fast, and locally, if signing is misconfigured. Publishing to a
+      # local repository exercises the exact same signing path as the real
+      # publish, so a malformed key or wrong passphrase surfaces here with a
+      # clear error instead of as an opaque failure mid-upload. Also proves the
+      # key reached the runner at all.
+      - name: Verify signing works
+        env:
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_IN_MEMORY_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_IN_MEMORY_KEY_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_IN_MEMORY_KEY_ID }}
+        run: |
+          ./gradlew publishToMavenLocal --stacktrace
+          signatures=$(find ~/.m2/repository/io/github/hagosalema -name '*.asc' | wc -l)
+          echo "Signature files produced: $signatures"
+          if [ "$signatures" -eq 0 ]; then
+            echo "::error::No .asc files were produced, so the signing key was not picked up." \
+                 "Check that SIGNING_IN_MEMORY_KEY holds the ASCII-armored block verbatim" \
+                 "(-----BEGIN PGP PRIVATE KEY BLOCK----- through -----END-----), not a base64 wrapping of it."
+            exit 1
+          fi
+
       - name: Publish to Maven Central
         env:
           ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
@@ -44,7 +65,9 @@ jobs:
           # Only needed if the keyring holds more than one secret key; harmless
           # to leave unset, in which case the secret simply resolves to empty.
           ORG_GRADLE_PROJECT_signingInMemoryKeyId: ${{ secrets.SIGNING_IN_MEMORY_KEY_ID }}
-        run: ./gradlew publishAndReleaseToMavenCentral --no-configuration-cache
+        # --stacktrace because the default output for a failed upload is a
+        # single opaque line; without it there's nothing to diagnose from.
+        run: ./gradlew publishAndReleaseToMavenCentral --no-configuration-cache --stacktrace
 
       - name: Build API documentation
         run: ./gradlew dokkaGeneratePublicationHtml
