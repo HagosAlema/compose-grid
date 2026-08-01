@@ -19,10 +19,11 @@ allprojects {
     // don't have to match, and renaming packages would break every import for
     // no benefit.
     group = "io.github.hagosalema"
-    // Next release line. Note this carries no -SNAPSHOT suffix, so a local
-    // `publishToMavenLocal` produces artifacts labelled 0.2.0 that are not the
-    // released 0.2.0 — don't hand those to anyone.
-    version = "0.2.0"
+    // The next release line, not a released version. Carries no -SNAPSHOT
+    // suffix by preference, so `publishToMavenLocal` produces artifacts
+    // labelled with a version that isn't on Maven Central yet — fine for local
+    // inspection, but don't hand those to anyone.
+    version = "0.2.1"
 }
 
 // Aggregate the three library modules into one API reference. sample-app and

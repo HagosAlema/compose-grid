@@ -5,8 +5,6 @@ A performant, virtualized data table for Jetpack Compose.
 [![Maven Central](https://img.shields.io/maven-central/v/io.github.hagosalema/grid-core)](https://central.sonatype.com/artifact/io.github.hagosalema/grid-core)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue)](LICENSE)
 
-> **`0.x` — the API may still change between minor versions.**
-
 | Sorting & selection | Dark theme | Paged, server-side sort |
 |:---:|:---:|:---:|
 | <img src="docs/images/sample-light.png" alt="Grid sorted by name with a row selected, showing pinned first and last columns" width="240"> | <img src="docs/images/sample-dark.png" alt="The same grid in dark theme" width="240"> | <img src="docs/images/sample-paged.png" alt="Paged grid sorted by department with a leading sort indicator" width="240"> |
