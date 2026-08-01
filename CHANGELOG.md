@@ -4,9 +4,13 @@ Notable changes to ComposeGrid. Format loosely follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 [SemVer](https://semver.org/). While on `0.x`, minor bumps may break API.
 
-## [Unreleased]
+## [Unreleased] — 0.2.0
 
 Nothing yet.
+
+Tracked for this line (see `DEVELOPMENT_PLAN.md` §7): screenshot testing via
+Roborazzi, a decision on the 24dp resize touch target versus Material's 48dp
+minimum, and variable per-row height.
 
 ## [0.1.0] — 2026-08-01
 
