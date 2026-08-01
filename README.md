@@ -7,6 +7,13 @@ A performant, virtualized data table for Jetpack Compose.
 
 > **`0.x` — the API may still change between minor versions.**
 
+| Sorting & selection | Dark theme | Paged, server-side sort |
+|:---:|:---:|:---:|
+| <img src="docs/images/sample-light.png" alt="Grid sorted by name with a row selected, showing pinned first and last columns" width="240"> | <img src="docs/images/sample-dark.png" alt="The same grid in dark theme" width="240"> | <img src="docs/images/sample-paged.png" alt="Paged grid sorted by department with a leading sort indicator" width="240"> |
+
+Left and right columns stay pinned while the middle scrolls. Screenshots from
+[`sample-app`](sample-app/src/main/kotlin/io/github/composegrid/sample/MainActivity.kt).
+
 ## Install
 
 ```kotlin
